@@ -78,6 +78,15 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
 12. **The web rig is single-tenant.** All web E2E tasks share one profile
     (`web-rewind-test`) and one port (8124), so they run one at a time — queued,
     never in parallel.
+13. **Worktrees have no local `node_modules`.** Peer packages
+    (`@deepseek-ai/dsh-session`, `dsh-llm`, …) resolve only from the profiles-level
+    hoist (`$DSH_HOME/profiles/node_modules`, TESTING.md:163-168). Any test importing a
+    module that reaches those peers (`lib/rewind.js`, `lib/errors.js`) needs an explicit
+    resolution fallback: RC-11's test registers a `node:module` resolve hook that
+    re-anchors an unresolvable bare specifier there, using the real packages and failing
+    loudly when they are absent. RC-01, RC-02 and RC-05 all touch `lib/rewind.js`, so
+    expect the same need; the RC-11 reviewer decides whether to extract it into one
+    shared helper.
 
 **Caveat on lineage:** the rc-04 / rc-06 worktrees were cut from `3c1ad89` (the
 last commit), which does **not** contain r2's uncommitted `lib/tool.js` work. Any
@@ -104,7 +113,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **fixing** — `d32a91b` REJECTED; f1 landed `f501c29`, verifying on `rc/04-f1-verify` |
 | RC-04h | P3 | Idempotency: skip composing a child that already holds a rewind-compact summary | `lib/tui-rewind.js` | RC-04 | proposed (reviewer followup `f4`) |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | fixing (dispatched) — fix: declare `input: { hint }` |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | verifying (fix `3c70746`) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying (fix `b1d35fa`) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
@@ -619,8 +628,17 @@ probe fails.
 
 ## RC-11 — the web client never dispatches command arguments
 
-**Priority** P2 · **Status** fixing ·
-**Files** `lib/command.js`, `tests/command-registration.test.js`
+**Priority** P2 · **Status** verifying ·
+**Files** `lib/command.js`, `tests/command-registration.test.js` · fix `3c70746`
+
+**Result.** One added line in the registration object:
+`input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
+`ALL CONTRACTS PASS`; and a negative check (delete the line → the new test fails,
+1 pass / 1 fail) shows the guard has teeth. Consumers of `input.hint` in the deployment:
+`dsh-commands/lib/index.js:150-154` (seam validation) and
+`dsh-client-ui-commands/lib/client.js:643,779` (spreads the hint into the input-claim
+envelope). `input.attachments` is not declared, so attachment admission is unchanged — and
+no TUI hint-display consumer exists.
 
 ### Finding (from RC-06e)
 
