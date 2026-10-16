@@ -28,6 +28,30 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
 | **D3** | Two graphs: merge or keep separate, and commit? | **A.** Keep both — `TASK-GRAPH.md` is the remediation subgraph, `task_dependencies.mmd` the project graph — cross-linked. `TASK-GRAPH.md` is committed **path-scoped** (`git add docs/TASK-GRAPH.md`) so r2's uncommitted files are never staged. The reverse link into the `.mmd` waits until r2 lands, since editing it now would mix with r2's uncommitted edits. |
 | **D4** | How to verify r2 while it is uncommitted? | **A.** r2 commits first; then **RC-03v** verifies that commit in its own worktree, exactly like every other node. No verifying a half-finished working tree. |
 
+## Integration branch (human testing)
+
+`integration` = `main` + every fully-chained node, merged `--no-ff` in dependency order:
+
+| merge | branch | contents |
+|---|---|---|
+| `aecdb84` | `rc/06-e2e` | RC-06 turn-number clamping — fix, verify, review, web E2E |
+| `a046d6d` | `rc/11-tests` | RC-11 command input contract — fix, verify, review, web E2E, plus RC-11a/b consolidation |
+| `e155984` | `rc/04-e2e` | RC-04 TUI before-mode system-head fix — fix, verify, review, web E2E half |
+
+`npm run check` → ALL CONTRACTS PASS; `node --test` 60/60. Installed into the throwaway TUI
+profile with `scripts/reload-profile.sh tui-rc-test` → `OK: lib copy in sync` +
+`OK: rewind-compact/entry composed`; the installed `lib/` is byte-identical to the branch, the
+entry composes, and all three fixes are present.
+
+**Not in integration yet:** RC-08a (its gate fix `c4d2937` is under narrow verification; it is
+scripts/tests-only, so it cannot affect TUI behaviour), RC-03/r2 (uncommitted by the external
+worker), and everything still blocked on r2 — RC-01, RC-02, RC-05, RC-07, RC-09.
+
+**Human test entry point:** `dsh --profile tui-rc-test`, then two or three turns → **Esc Esc** →
+**Rewind + compact before** → toast; fast path `/rewind-compact 3 before`. The
+`session.rewind.intercept` grant is already present in `~/.dsh-tui/extension-grants.json`.
+This profile is the human gate for RC-04 and the E2E gate for any future TUI-surface node.
+
 ## Node schema
 
 | field | meaning |
