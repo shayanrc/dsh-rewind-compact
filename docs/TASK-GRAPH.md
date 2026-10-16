@@ -37,15 +37,16 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
 | `aecdb84` | `rc/06-e2e` | RC-06 turn-number clamping — fix, verify, review, web E2E |
 | `a046d6d` | `rc/11-tests` | RC-11 command input contract — fix, verify, review, web E2E, plus RC-11a/b consolidation |
 | `e155984` | `rc/04-e2e` | RC-04 TUI before-mode system-head fix — fix, verify, review, web E2E half |
+| `58328f7` | `rc-08a-guard-verify` | RC-08a inspector + replay checker — the whole arc plus the EPIPE guard gate (`c4d2937`, verified `743d05c`) |
 
-`npm run check` → ALL CONTRACTS PASS; `node --test` 60/60. Installed into the throwaway TUI
-profile with `scripts/reload-profile.sh tui-rc-test` → `OK: lib copy in sync` +
+`npm run check` → ALL CONTRACTS PASS; `node --test` **133/133, 0 skipped**. Installed into the
+throwaway TUI profile with `scripts/reload-profile.sh tui-rc-test` → `OK: lib copy in sync` +
 `OK: rewind-compact/entry composed`; the installed `lib/` is byte-identical to the branch, the
-entry composes, and all three fixes are present.
+entry composes, and every merged fix is present in the installed copy.
 
-**Not in integration yet:** RC-08a (its gate fix `c4d2937` is under narrow verification; it is
-scripts/tests-only, so it cannot affect TUI behaviour), RC-03/r2 (uncommitted by the external
-worker), and everything still blocked on r2 — RC-01, RC-02, RC-05, RC-07, RC-09.
+**Not in integration yet:** RC-03/r2 (uncommitted by the external worker) and everything still
+blocked on r2 — RC-01, RC-02, RC-05, RC-07, RC-09. RC-06h, RC-11c/RC-11d and RC-08a-3…8 are
+proposed rather than open work.
 
 **Human test entry point:** `dsh --profile tui-rc-test`, then two or three turns → **Esc Esc** →
 **Rewind + compact before** → toast; fast path `/rewind-compact 3 before`. The
@@ -152,8 +153,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **fixing** — arc review `a52b932` APPROVE-WITH-FOLLOWUPS; gate `RC-08a-g` dispatched |
-| RC-08a-g | **P0** | **Merge gate:** move the stdout EPIPE guard inside `invokedDirectly` so importing a module cannot force exit 0 | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verifying (fix `c4d2937`, narrow independent check dispatched) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **merging** — arc complete (fixes `b1d35fa`/`c46c919`/`95d9ac6`/`c4d2937`, verifies `e29d603`/`40ce6d9`/`483e85f`/`743d05c`); integrated at `58328f7`; six P3 followups open |
+| RC-08a-g | **P0** | **Merge gate:** move the stdout EPIPE guard inside `invokedDirectly` so importing a module cannot force exit 0 | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | **done** — verified `743d05c`, integrated |
 | RC-08a-3 | P3 | Swallow EPIPE (`return`) instead of exiting 0, preserving the real exit code | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | proposed |
 | RC-08a-4 | P3 | De-flake the two load-flaky truncation detectors; soften the mirror race in test I | `tests/` | RC-08a | proposed |
 | RC-08a-5 | P3 | Replace the three `git show` reach-backs with a checked-in pre-fix fixture | `tests/fixtures/`, `tests/` | RC-08a | proposed |
@@ -824,6 +825,21 @@ changes the stdout `'error'` listener count 0 → 1, importing the fixed module 
 CLI early-close still exits 0 with empty stderr, and the existing EPIPE tests still pass. Suite
 83/83, `npm run check` green. Narrow independent verification dispatched on
 `rc-08a-guard-verify`.
+
+**Gate verification (agent 5b4ccd61, commit `743d05c`) — CONFIRMED, no caveat on the fix.** Fresh
+child processes show the import side effect gone: `inspect-fork` and `replay-check` both go
+0 → **0** listeners post-fix, against 0 → **1** pre-fix, with `process.exitCode` left untouched by
+an import. The importer gate reproduces cleanly — post-fix via either module → exit 1 with ~847 B
+of EPIPE text; pre-fix → **exit 0 with 0 B stderr** (the defect), deterministic over 5 repeats.
+The CLI still exits 0 with empty stderr on early close, **and the guard is load-bearing**: a
+preload that discards stdout `'error'` listeners makes the same early close exit 1 with EPIPE, so
+the exit-0 assertion is not vacuous. Full consumers are byte-identical pre/post fix. Scope is
+exactly the two scripts plus the fixer's test, and a mechanical strip of the moved guard leaves
+the remaining text byte-identical — no statement, output string or exit code changed. A mutation
+control (revert `scripts/*.mjs` to `a52b932`) fails 6/12 of the verifier's own tests, exactly the
+discriminating ones. Suite 95/95, `npm run check` green. The symlink counterexample (no output,
+exit 0) reproduces on **both** revisions, confirming it as the pre-existing RC-08a-7 rather than a
+regression from this fix.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
