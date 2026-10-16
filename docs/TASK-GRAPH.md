@@ -127,7 +127,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
-| RC-03v | P1 | Verify r2's committed before-mode change (`f6` re-check included) | `lib/tool.js` | r2 (external) | blocked until r2 commits |
+| RC-03v | P1 | Verify r2's committed before-mode change (card written; **H1 = system-head range case runs first**) | `lib/tool.js` | r2 (external) | blocked until r2 commits |
 | RC-05 | P2 | Fork summaries are never hybrid: implement child-side summarization or downgrade the claim | `SPEC.md` §R5, `README.md` | RC-01, RC-02, RC-03, RC-04 | blocked |
 | RC-02 | P3 | Forked-session title is not a create option and is never applied | `lib/rewind.js` (docs on the doc-only branch) | RC-01 | blocked |
 | RC-07 | P3 | Gating error says "requires approval"; it is a presence check and root-agent-only | `lib/tool.js` | RC-03 | blocked |
@@ -866,3 +866,92 @@ remains anywhere in `lib/rewind.js`.
 
 RC-01e: fork via `/rewind-compact`, then inspect the child header — all four fields set,
 source still resumable.
+
+---
+
+## RC-03v — verify r2's before-mode change (verification node)
+
+**Priority** P1 · **Status** blocked until r2 commits · **Verified artifact** r2's
+`lib/tool.js` + `scripts/check-contracts.mjs` · **Owner** an independent verifier, never
+r2's author
+
+### Why this node is separate
+
+r2 is external work with no fixer in this graph, and its own contract step 5 was written by
+the same worker that wrote the code it checks — so a green `npm run check` there is
+self-certification, not verification. This node supplies the independent read. Its first
+job is to execute a hypothesis raised while tracing r2's range arithmetic end to end.
+
+### H1 — the before-mode region starts at the system prompt (run this first)
+
+Code reading, **not yet executed**:
+
+- r2 sets `regionStart = surfaceEvents(events.slice(range.start, range.end + 1))[0]?.seq`,
+  and in real sessions the prefix's first surface node is the **system prompt**
+  (`surface.first: system/message` on four of the five logs the RC-08a verifier sampled).
+- `compactRegion(start, end)` maps it via `state.nodes.indexOf(startSeq)`;
+  `validateSurfaceRegion` checks presence, order and tool-pairing only — it does **not** skip
+  the head.
+- Compaction commits its checkpoint as
+  `session.append("user/message", checkpointMessage, { surfaceOp: { op: "replace", startSeq: start, endSeq: end } })`
+  (`dsh-compaction-basic` → `commitCompactionBody`).
+- `assertSystemHeadRewrite` (`dsh-session/lib/index.js:379-383`) throws when `startIdx === 0`,
+  node 0 is a `system/message`, and the replace is not a `system/message` over exactly that
+  node.
+
+If that chain holds, before-mode in-place fails loudly (`REWIND_COMPACT_COMPACT_FAILED`) on
+any normal session — the same guard that rejected RC-04's first fix, reached through the
+compaction API instead of our own `append`.
+
+**Test.** Build a REAL `dsh-session` `Session` whose surface node 0 is a `system/message`
+(mirror the RC-04 verifier: real `Session.create`, real seed, read the real `surface`), then
+drive the tool's before-mode path — or call `compactRegion(regionStart, scaffoldSeq, agent)`
+directly with those seqs — and record the exact outcome with output.
+**Branch:** if it throws, open **RC-03-f1** (`lib/tool.js`, depends r2) to start the region
+after the system head, mirroring RC-04-f1's head exclusion. If it does not throw, record
+*why* — the handoff must state which link in the chain above is wrong.
+
+### H2 — `f6`: `modeRange`/`regionStart`
+
+The RC-04-f1 reviewer flagged `modeRange`'s `start` (minimum finite seq, usually the
+non-surface `session` node at seq 0) as a "not found in surface" throw. r2 overrides it with
+a surface seq. Confirm the override is what actually reaches `compactRegion` in **both**
+modes, and that the override cannot yield a non-surface seq — e.g. a prefix with no surface
+events falls back to `range.start`, which is exactly the case that used to throw.
+
+### H3 — the contract pin must be able to fail (mutation)
+
+In a scratch copy, revert `compactRegion(regionStart, scaffoldSeq)` to
+`compactRegion(range.start, range.end + 1)` and run `npm run check`. It must **FAIL** with
+the named violation. A pin that stays green under the defect it claims to catch is
+decoration.
+
+### H4 — honesty of the reported result
+
+In before mode, confirm `compactedRange` equals what the surface actually shadowed, and that
+`hybrid: true` is returned only when the scaffold really is the region's final message.
+Confirm too that replaying the tail into the same session produces no duplicate message ids
+(r2 re-ids `user/message` records with `randomUUID`).
+
+### H5 — live (best effort; record the gap if blocked)
+
+Find a profile that actually loads the compaction bundle — the web template does not, where
+the plugin logs "no compaction service in this profile" and degrades to `applied: false`.
+Drive `rewind_compact(rewind: false)` in before mode there and inspect the resulting
+surface. If reaching it requires human TUI interaction, mark it human-gated and record the
+gap rather than inferring an answer.
+
+### Acceptance
+
+H1–H4 each have a recorded, reproducible result with the exact command and output. H5 is
+either executed or explicitly marked human-gated. **A green `npm run check` on r2's tree is
+not accepted as evidence for any of them.**
+
+### Review
+
+A third agent confirms H1's test would fail if the region started at the system head (i.e.
+it is not tautological) and that the H3 mutation genuinely ran.
+
+### RC-03v handoff
+
+_(verifier appends: r2's commit sha, each H-result with output, and the RC-03-f1 go/no-go)_
