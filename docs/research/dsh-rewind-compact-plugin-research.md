@@ -1,13 +1,13 @@
 # Building a "rewind + compact" plugin for DeepSeek Harness (dsh)
 
-Sources: installed CLI `/usr/lib/node_modules/@deepseek-ai/dsh` (v0.1.5-rc.1; ships only `lib/` + READMEs — the `reference/` and `config/examples/` dirs its README links are repo-relative and **not** in the installed package), its 240 bundled `@deepseek-ai/dsh-*` packages under `…/dsh/node_modules/@deepseek-ai/`, and the user profiles at `/home/xion/.dsh/profiles/{dsh-tui,web}`.
+Sources: installed CLI `$(npm root -g)/@deepseek-ai/dsh` (v0.1.5-rc.1; ships only `lib/` + READMEs — the `reference/` and `config/examples/` dirs its README links are repo-relative and **not** in the installed package), its 240 bundled `@deepseek-ai/dsh-*` packages under `…/dsh/node_modules/@deepseek-ai/`, and the user profiles at `~/.dsh/profiles/{dsh-tui,web}`.
 
 ## 1. Plugin bundle anatomy
 
 A bundle is an npm package whose `package.json` declares `"dsh": {"bundle": {"patch": "./cordis.patch.yml"}}` (e.g. `dsh-base/package.json`, `@deepseek-harness-tui/dsh-tui/package.json`). The profile manifest lives in `package.json`:
 
 ```json
-// /home/xion/.dsh/profiles/dsh-tui/package.json
+// ~/.dsh/profiles/dsh-tui/package.json
 "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-harness-tui/dsh-tui"], "patchReload": "live" } }
 ```
 
@@ -41,10 +41,10 @@ session.append("user/message", checkpointMessage, { surfaceOp: { op: "replace", 
 
 ## 4. Session transcript format
 
-`$DSH_HOME/sessions/<normalized-cwd>/<session-id>/session.v3.jsonl.zstd` (current gen; `session.jsonl`, `.v1.`, `.v2.` historical). `zstd`/`unzstd` at `/opt/miniconda3/bin/zstd` work. Layout/durability: `dsh-session-persistence-jsonl/README.md` (one JSON row per event; checksummed zstd frames; "Committed events are never rewritten"; torn-tail recovery). Record shape from `…/--mnt-Workspace-Workspace--/50f2122d-…/session.v3.jsonl.zstd`:
+`$DSH_HOME/sessions/<normalized-cwd>/<session-id>/session.v3.jsonl.zstd` (current gen; `session.jsonl`, `.v1.`, `.v2.` historical). `zstd`/`unzstd` (whatever is on `PATH`) work. Layout/durability: `dsh-session-persistence-jsonl/README.md` (one JSON row per event; checksummed zstd frames; "Committed events are never rewritten"; torn-tail recovery). Record shape from `…/<normalized-cwd>/50f2122d-…/session.v3.jsonl.zstd`:
 
 ```json
-{"type":"session","version":3,"id":"50f2122d-…","createdAt":…,"cwd":"/mnt/Workspace/Workspace","isSeeded":false,"delegationDepth":0,"agentPreset":"standard"}
+{"type":"session","version":3,"id":"50f2122d-…","createdAt":…,"cwd":"<workspace>","isSeeded":false,"delegationDepth":0,"agentPreset":"standard"}
 {"type":"user/message","seq":8,"time":…,"data":{"role":"user","content":[{"type":"text","text":"…"}],"source":{"kind":"user"},"id":"db893e1b-…"},"surfaceOp":"append"}
 {"type":"assistant/message","seq":16,"time":…,"data":{"turn":1,"step":1,"message":{"role":"assistant","content":[{"type":"reasoning","text":"…"},…]},"sourceEventSeqs":[…]},"surfaceOp":"append"}
 {"type":"tool/call","seq":17,"time":…,"data":{"turn":1,"step":1,"callId":"call_00_…","name":"skill","arguments":"{\"name\":\"grilling\"}"}}

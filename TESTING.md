@@ -14,10 +14,12 @@ Two layers of testing:
 ## Automated browser E2E — verified green
 
 ```sh
-cd /mnt/Workspace/Workspace/.rwc-test        # venv + browsers live here
+REPO=$(git rev-parse --show-toplevel)        # run from the repo root
+SCRATCH="${SCRATCH:-$HOME/.rwc-test}"        # venv + browsers live here
+cd "$SCRATCH"
 ./venv/bin/python -m playwright install chromium
-PLAYWRIGHT_BROWSERS_PATH=/mnt/Workspace/Workspace/.rwc-test/browsers \
-  ./venv/bin/python /mnt/Workspace/Workspace/dsh-rewind-compact/scripts/e2e-web-test.py \
+PLAYWRIGHT_BROWSERS_PATH="$SCRATCH/browsers" \
+  ./venv/bin/python "$REPO/scripts/e2e-web-test.py" \
   "http://127.0.0.1:8124/?token=<fresh-boot-token>"
 ```
 
@@ -119,7 +121,8 @@ Same two commands, pointed at the live profile — this changes your real web
 environment:
 
 ```sh
-dsh plugin --profile web add --offline file:/mnt/Workspace/Workspace/dsh-rewind-compact
+REPO=$(git rev-parse --show-toplevel)     # run from the repo root
+dsh plugin --profile web add --offline "file:$REPO"
 dsh --profile web --dump-config | grep rewind-compact/entry   # verify compose
 dsh web                                                       # normal boot
 ```

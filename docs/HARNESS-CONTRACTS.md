@@ -9,7 +9,7 @@ every turn.
 
 Paths used below:
 
-- `D`: `/usr/lib/node_modules/@deepseek-ai/dsh` (launcher)
+- `D`: `$(npm root -g)/@deepseek-ai/dsh` (launcher; resolved from the global npm root)
 - `N`: `D/node_modules/@deepseek-ai` (harness packages)
 - `H`: `$DSH_HOME/profiles/node_modules/@deepseek-ai` (profiles-level hoist)
 - `T`: `$DSH_HOME/profiles/dsh-tui/node_modules/@deepseek-harness-tui/dsh-tui`
