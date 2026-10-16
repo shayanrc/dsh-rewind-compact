@@ -115,7 +115,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 
 | id | P | title | files | depends_on | status |
 |---|---|---|---|---|---|
-| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — f1 approved (`f501c29` + `9c7b054`, review `cb085fc`); web half dispatched, TUI half human-gated |
+| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — web half PASSED `f357984`; **TUI half pending a human** (blocks merge) |
 | RC-04h | P3 | Compose from the child's folded surface, not the raw log; make tail replay child-aware | `lib/tui-rewind.js` | RC-04 | proposed (reviewer: wider than idempotency) |
 | RC-04i | P3 | Harness-version surface compat: 0.2.0 adds `developer/message` to the surface, `lib/events.js` `SURFACE_TYPES` omits it | `lib/events.js`, `tests/` | RC-04 | proposed |
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
@@ -464,6 +464,16 @@ Note committed as `cb085fc`.
 - **Fix at merge time:** `tests/rc04-f1-verify.test.js` reaches back via
   `git show f501c29~1`, which breaks in a shallow clone; inline the pre-fix blob instead.
 
+**E2E (RC-04e) — web half PASS, TUI half PENDING (human).** Evidence committed as
+`f357984` (`docs/e2e/RC-04.md`). `npm run check` → ALL CONTRACTS PASS; the profile was
+refreshed from the E2E worktree; the stock flow drove `/rewind-compact` → picker → turn 2 →
+Compact before. Body: `Rewound to turn 2 (before mode). New session: 4d3c67e2-…`. Boot log:
+`entry loaded`, `picker answers: … mode=["Compact before"]`, `forking: … mode before,
+boundary seq 21`, `fork done: child 4d3c67e2-…, hybrid false`, and **zero** `surface
+replace` occurrences in log or page. **Scope:** this reaches only the command/picker/fork
+path, never `tui/rewind-done`, so it is a regression check — the fix itself stays
+unexecuted until the human TUI run.
+
 ### Evidence and root cause
 
 `rewindDoneAnswer` (`lib/tui-rewind.js:100-125`) runs *after* the TUI has already
@@ -630,9 +640,11 @@ New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 returns `cwd: null`, `parentSession: null`, `isSeeded: false`,
 `inheritedEventCount: null`, `endSeed: {}`, `surface.count: 3`; independently re-read here
 with `unzstd -c` plus a hand parser and matching the CLI exactly. That output is
-**RC-01's measured before-state**. Tool caveat worth knowing: real header records carry
-`id`/`version`/`cwd`/`parentSession`/`isSeeded` at the **record top level**, not under
-`data`, and real `session/end-seed` payloads are `{}`.
+**RC-01's measured before-state**. `header.inheritedEventCount` is *derived* from the
+`session/end-seed` marker rather than read from the header — that is why it reports `null`
+on an unseeded child, and `endSeed` is the field to judge. Tool caveat worth knowing: real
+header records carry `id`/`version`/`cwd`/`parentSession`/`isSeeded`/`agentPreset` at the
+**record top level**, not under `data`, and real `session/end-seed` payloads are `{}`.
 
 ### RC-08b — pin `CreateAgentOptions` (blocked on r2)
 
@@ -724,18 +736,33 @@ silently dropped.
 
 ### Measured before-state (real, not inferred)
 
-RC-08a's inspector, run on the child produced by RC-06e's stock web fork
-(`_no-cwd/008ba13e-0147-425c-a990-a9d80be186ae`) and independently re-read with
-`unzstd -c` plus a hand parser:
+Side-by-side headers from the same RC-04e web run — the source session, created normally
+by the web UI, and the child that `agents.create` produced (`_no-cwd/4d3c67e2-…`), both
+read with `unzstd -c` plus a hand parser:
 
-```
-cwd: null    parentSession: null    isSeeded: false    inheritedEventCount: null
-```
+| header field | source session | forked child |
+|---|---|---|
+| `cwd` | `/mnt/Workspace/Workspace/dsh-rewind-compact` | **absent** |
+| `parentSession` | — (root) | **absent** |
+| `agentPreset` | `standard` | **absent** |
+| `isSeeded` | `false` | `false` (should be `true`) |
+| `delegationDepth` | `0` | `0` |
+| `session/end-seed` | — | `{}` (should be `{inherited: true}`) |
+
+`cwd`, `parentSession` and `agentPreset` **are** real `SessionHeader` fields: the source
+carries two of them, so their absence on the child is this node's defect, not a
+transcript-format quirk. `inheritedEventCount` is *not* a header field — it is projected
+into the log as `session/end-seed`, which is why the child's marker is the real signal.
+
+> **Do not repeat this misreading.** RC-04e's agent concluded that `cwd`/`parentSession`
+> "belong to the dsh-schedule/TUI-adapter creation path, not this transcript record".
+> That is false: the comparison above comes from the same harness build, and the source
+> session proves both fields are written for ordinary sessions.
 
 Consequences: the child lands in `_no-cwd` (README bullet 5), has no lineage so it is
-absent from the session tree entirely, and is marked unseeded with inherited count 0 —
-so the copied prefix is treated as the child's own history and `session/end-seed` is
-`{}` rather than `{inherited: true}`.
+absent from the session tree, silently loses the source's agent preset, and is marked
+unseeded — so the copied prefix is treated as its own history and `session/end-seed` stays
+`{}` instead of `{inherited: true}`.
 
 ### Also in scope
 
@@ -752,8 +779,9 @@ Build the real options object, mirroring `liveSessionCreateOptions`:
 ### Acceptance
 
 RC-08b's probe passes; a web fork's child header shows non-null `cwd` and
-`parentSession`, `isSeeded: true`, `inheritedEventCount === seed.length` (measured with
-`scripts/inspect-fork.mjs`); the source session is untouched.
+`parentSession`, `isSeeded: true`, and the carried `agentPreset`; its `session/end-seed`
+payload is `{inherited: true}`; and the source session is untouched. Measure with
+`scripts/inspect-fork.mjs` (RC-08a) cross-checked against a hand `unzstd -c` read.
 
 ### Verification (independent)
 
