@@ -122,8 +122,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
 | RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **merging** — full chain green (fix `3c70746`, verify `75d211d`, review `f1001e3`, e2e `c65c7ee` PASSED); RC-11a/b to land first |
-| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | fixing (dispatched, combined with RC-11b) |
-| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | fixing (dispatched, combined with RC-11a) |
+| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | verifying (fix `010be21`; coverage-integrity check dispatched) |
+| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | verifying (fix `010be21`, same dispatch) |
 | RC-11c | P3 | Shared peer-resolution helper: package.json allowlist, `registerHooks`, loud failure | `tests/support/harness-peers.mjs` | — | proposed (RC-01/02/05 need it) |
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
@@ -888,6 +888,23 @@ before each launch, three UI gates cleared:
 - **Attachment refusal.** Attaching a real file and submitting gives the toast
   `/rewind-compact does not accept attachments; remove them first`, keeps the draft and the
   attachment card, opens no picker, and leaves `command/run = 0`.
+
+**Test consolidation + fixture differential (`010be21`, RC-11a/RC-11b).** The verifier's
+`tests/rc11-verify.test.js` became `tests/command-registration.test.js` (339 lines) and the
+mirrored-seam assertions were deleted; the differential now reads
+`tests/fixtures/command.pre-rc11.js` — a verbatim copy of the pre-fix `lib/command.js` with a
+provenance header and two rebased specifiers — so no `git show` remains and the layer can no
+longer skip after a rebase. `node --test tests/` = 29 tests, 0 skipped. A falsification run in a
+throwaway copy (strip the one `input` line) turns exactly two tests red — seam-accept and
+differential — so the layer is not vacuous.
+
+**Gate for RC-11a/b (deliberate deviation, recorded).** They change tests only, on a node whose
+code is unchanged and already fully chained (fix → verify → review → e2e). D1's tier 2 would
+ask for `npm run check` plus a fresh-boot smoke, but the real risk in a 339-line rewrite **with
+deletions** is coverage loss. So the gate here is an independent coverage-integrity verification
+— fixture fidelity against `git show 3c70746~1`, mutation red-sets, and confirmation that each
+removed assertion's claim is still covered by a kept test — rather than a fresh review and web
+E2E. This deviation is recorded so it stays auditable.
 
 **Result.** One added line in the registration object:
 `input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
