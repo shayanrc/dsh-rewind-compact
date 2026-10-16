@@ -121,7 +121,12 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
 | RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | reviewing (fix `3c70746`, verify `75d211d`) |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **e2e** — fix `3c70746`, verify `75d211d`, review `f1001e3` APPROVE-WITH-FOLLOWUPS; RC-11e dispatched |
+| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | proposed (do before merge) |
+| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | proposed |
+| RC-11c | P3 | Shared peer-resolution helper: package.json allowlist, `registerHooks`, loud failure | `tests/support/harness-peers.mjs` | — | proposed (RC-01/02/05 need it) |
+| RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
+| RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying — defects fixed `c46c919` (56/56); independent re-verification running |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
@@ -322,7 +327,9 @@ Consequences for every E2E task:
   and the web client claims the whole line when `desc.input !== undefined`
   (`dsh-client-ui-commands` `matchEnter`). Declaring
   `input: { hint: '[turn] [after|before]' }` makes the documented fast path real, so
-  `TESTING.md`'s instruction becomes *correct* rather than needing a correction.
+  `TESTING.md`'s instruction becomes *correct* — but its parenthetical ("the bare command
+  explains the TUI picker path") is wrong: bare `/rewind-compact` on web opens the two
+  dialogs. RC-09 fixes the parenthetical, not the instruction.
 - **Checklist interaction:** once RC-11 lands, an arg-bearing line dispatches as a
   **command**, so the capitalised `Unknown turn` becomes the right assertion for
   `/rewind-compact 99 after` and the lowercase tool string no longer applies. RC-06e's
@@ -721,7 +728,7 @@ probe fails.
 
 ## RC-11 — the web client never dispatches command arguments
 
-**Priority** P2 · **Status** reviewing ·
+**Priority** P2 · **Status** e2e (review-approved) ·
 **Files** `lib/command.js`, `tests/command-registration.test.js` · fix `3c70746`
 
 **Verification result (agent 81ba51e6) — CONFIRMED WITH CAVEATS.** It did not mirror the
@@ -756,6 +763,47 @@ it cannot turn a genuine failure into a pass. Residual masking: it resolves from
 profile store even for an *undeclared* dependency, so this unit test is not a packaging
 gate. `module.register()` is deprecated on Node 26 (DEP0205); the verifier prefers
 `registerHooks` when available.
+
+**Review result (agent 1504b1cd) — APPROVE-WITH-FOLLOWUPS.** Note `f1001e3`
+(`docs/reviews/rc-11.md`); the reviewer re-ran `npm test` → 29/29 with every differential
+layer really executing.
+
+- **All three behaviour changes ratified** against the real client and composer, with one
+  unstated difference worth documenting: on the claim path the composer stays
+  `phase='submitting'` until the command settles, so Enter is refused while the picker
+  dialogs are open **and** during fork+compaction (pre-fix fire-and-forget kept it live).
+  That is the harness's normal semantics for every input-bearing command (`/goal` behaves the
+  same).
+- **(d) missed by both fixer and verifier:** the `/` **menu route** changed too —
+  `dispatch()` returns a claim whenever `desc.input !== undefined`, so picking
+  `/rewind-compact` from the menu now *begins a claim* (chip, second Enter) instead of
+  executing detached. Accepted as the same class as the space-claim change. Side effects: the
+  command drops out of non-leading-position autocomplete, and the TUI palette now shows the
+  hint tag (`skill-catalog.js:43` reads `input.hint`).
+- **`attachments: false` must NOT be added.** `attachments !== true` is the refusal condition
+  in all three consumers (web `matchEnter`, host execute, TUI catalog) and the seam drops
+  non-true values, so `false` ≡ absent. Precedent: the text-only `/feedback` omits the flag;
+  only `/goal`, which consumes attachments, sets it true.
+- **Test merge shape:** keep the verifier's file only. Promote
+  `tests/rc11-verify.test.js` → `tests/command-registration.test.js`, fold in the fixer's two
+  unique pure assertions (ctx-purity Proxy + name check), delete the mirrored-seam ones
+  (RC-11a). `git show 3c70746~1` has two defects — a silent `t.skip` that loses the
+  differential, and a pre-merge SHA that changes on rebase so the layer skips **forever**
+  (RC-11b).
+- **The peer hack is not a packaging gate** — the reviewer reproduced a resolution of
+  `@deepseek-ai/dsh-commands`, which is *not* in this repo's peer list, through the hook's
+  any-bare-specifier anchoring. Extract to `tests/support/harness-peers.mjs` with an
+  allowlist derived from `package.json` peers, `registerHooks` first, and loud failures
+  (RC-11c), shared by RC-01/02/05.
+- **Docs:** `README.md:8` calls the command TUI-only; `:25`'s table row contradicts the web
+  section; `:45`'s seam bullet omits the load-bearing `input` contract; `TESTING.md:126-127`
+  is now **true** but its parenthetical is wrong (bare `/rewind-compact` on web opens the two
+  dialogs); SPEC R3's acceptance should gain the input-contract requirement → RC-09 + RC-11d.
+- **Unwitnessed link:** no test covers seam→client descriptor transport (the verifier stubbed
+  `directory.resolve` with a hand-built descriptor). The wire is fine —
+  `dsh-commands/lib/typert.host.js`'s `commands/list` schema includes
+  `input?: {hint, attachments?}` — but only the real browser run proves it end to end →
+  RC-11e.
 
 **Result.** One added line in the registration object:
 `input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
