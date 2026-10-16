@@ -87,6 +87,11 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
     loudly when they are absent. RC-01, RC-02 and RC-05 all touch `lib/rewind.js`, so
     expect the same need; the RC-11 reviewer decides whether to extract it into one
     shared helper.
+14. **Branches carry only their own dependencies' artifacts.** A node's branch is cut
+    from its prerequisite's branch, so an *unrelated* node's tooling is absent until
+    merge — RC-04e's branch predates RC-08a's `scripts/inspect-fork.mjs`, so it must
+    hand-roll the header read with `unzstd -c`. E2E and verification agents must not
+    assume sibling tooling exists; they may read a sibling branch, never merge it.
 
 **Caveat on lineage:** the rc-04 / rc-06 worktrees were cut from `3c1ad89` (the
 last commit), which does **not** contain r2's uncommitted `lib/tool.js` work. Any
