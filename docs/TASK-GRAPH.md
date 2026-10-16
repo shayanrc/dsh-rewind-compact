@@ -623,9 +623,11 @@ reproduction, not a hand-rolled inspection. r2 already added contract step 5
 ("hybrid scaffold placement"), so the remaining scope is narrower than when this
 node was written.
 
-**Reference target (real, not hypothetical).** The verifier's 182-log census turned up a
-correctly created seeded child — `--mnt-…--/bdd7d050-…` — with exactly the shape this
-node's fix must produce: `cwd: /mnt/Workspace/Workspace/dsh-rewind-compact`,
+### RC-08a — fork-artifact inspector + replay assertion helper (fix `b1d35fa`, verification found 2 defects)
+
+**Reference target for RC-01 (real, not hypothetical).** The verifier's 182-log census
+turned up a correctly created seeded child — `--mnt-…--/bdd7d050-…` — with exactly the
+shape RC-01's fix must produce: `cwd: /mnt/Workspace/Workspace/dsh-rewind-compact`,
 `parentSession: c03b1979-…`, `isSeeded: true`, `endSeed: {"inherited":true}`,
 `surface.first: system/message@14`. Compare a post-fix fork against it rather than against
 a description.
