@@ -110,8 +110,11 @@ node merging those branches must rebase onto whatever r2 lands as.
 
 | id | P | title | files | depends_on | status |
 |---|---|---|---|---|---|
-| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **fixing** — `d32a91b` REJECTED; f1 landed `f501c29`, verifying on `rc/04-f1-verify` |
-| RC-04h | P3 | Idempotency: skip composing a child that already holds a rewind-compact summary | `lib/tui-rewind.js` | RC-04 | proposed (reviewer followup `f4`) |
+| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — f1 approved (`f501c29` + `9c7b054`, review `cb085fc`); web half dispatched, TUI half human-gated |
+| RC-04h | P3 | Compose from the child's folded surface, not the raw log; make tail replay child-aware | `lib/tui-rewind.js` | RC-04 | proposed (reviewer: wider than idempotency) |
+| RC-04i | P3 | Harness-version surface compat: 0.2.0 adds `developer/message` to the surface, `lib/events.js` `SURFACE_TYPES` omits it | `lib/events.js`, `tests/` | RC-04 | proposed |
+| RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
+| RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
 | RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | verifying (fix `3c70746`) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
@@ -427,6 +430,34 @@ child-surface endpoints, optional `sourceEventSeqs`).
   first *surface* seq — re-check it inside RC-03 verification rather than fixing blind.
 - **E2E status:** RC-04e's TUI leg would have failed before `f1`; it stays blocked
   until `f1` is verified, re-reviewed, and the branch is re-cut.
+
+**f1 re-review (agent 04ebe113) — APPROVE-WITH-FOLLOWUPS; merge `f501c29` + `9c7b054`.**
+Note committed as `cb085fc`.
+
+- **Shape ratified and closed across versions.** `assertSystemHeadRewrite` is
+  byte-identical in `0.2.0-rc.2` (`dsh-session/lib/index.js:416-419`); the reviewer staged
+  that version with its dependency closure and ran the composer end-to-end with identical
+  behaviour. On 0.2.0 the committed suite is 44/47, and all three failures are
+  **fixture-level** (`seed system/message at index 0 message must have system-prompt
+  source` — 0.2.0 renamed the system source kind), not product regressions.
+- **The tests are not tautological.** A mutation sweep showed: drop `slice(1)` → 9
+  failures; `head = undefined` → 9; drop the seq filter → 2; drop the `snapshotEvents`
+  guard → 1. No assertion in either test file survives removal of the head exclusion.
+- **RC-04h is wider than idempotency.** `snapshotEvents()` returns `[...this.log]`, so a
+  second run reads shadowed records, throws `start seq 1 not found in surface`, and returns
+  `undefined` with surface and log untouched. The TUI does not re-fire `rewind-done`, so
+  it is non-blocking — but the read is wrong for any non-fresh child, and `replayEvents`
+  has no dedup.
+- **New nodes filed:** RC-04i (0.2.0 makes `developer/message` surface-eligible while
+  `lib/events.js`'s `SURFACE_TYPES` omits it, so such a node is never shadowed or
+  summarized), RC-04j (the contract probe cannot see this defect class at all), RC-04k
+  (docs + shallow-clone fragility).
+- **Cross-workstream.** The reviewer also found `AGENTS.md:38` stale in both halves, and
+  that `lib/tool.js:157` passes `range.end + 1` past an end that is **inclusive**
+  (`dsh-compaction-basic:930`) — but the main tree already carries r2's uncommitted fix for
+  exactly that, so it belongs to RC-03v, not to f1.
+- **Fix at merge time:** `tests/rc04-f1-verify.test.js` reaches back via
+  `git show f501c29~1`, which breaks in a shallow clone; inline the pre-fix blob instead.
 
 ### Evidence and root cause
 
