@@ -128,7 +128,14 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | reviewing (whole arc; fixes `b1d35fa`/`c46c919`/`95d9ac6`, verifies `e29d603`/`40ce6d9`/`483e85f`) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **fixing** — arc review `a52b932` APPROVE-WITH-FOLLOWUPS; gate `RC-08a-g` dispatched |
+| RC-08a-g | **P0** | **Merge gate:** move the stdout EPIPE guard inside `invokedDirectly` so importing a module cannot force exit 0 | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | fixing (dispatched) |
+| RC-08a-3 | P3 | Swallow EPIPE (`return`) instead of exiting 0, preserving the real exit code | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | proposed |
+| RC-08a-4 | P3 | De-flake the two load-flaky truncation detectors; soften the mirror race in test I | `tests/` | RC-08a | proposed |
+| RC-08a-5 | P3 | Replace the three `git show` reach-backs with a checked-in pre-fix fixture | `tests/fixtures/`, `tests/` | RC-08a | proposed |
+| RC-08a-6 | P3 | Consolidate 6 arc test files into 2 unit files + 1 cli-stdout file | `tests/` | RC-08a | proposed |
+| RC-08a-7 | P3 | `invokedDirectly` is false on symlinked or `#`-containing paths → silent no-op exit 0; use `pathToFileURL` + `realpathSync` | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | proposed |
+| RC-08a-8 | P3 | Make the real-log probes CI-portable and drop the pinned developer UUIDs | `tests/` | RC-08a | proposed |
 | RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verified `483e85f`; caveats (a)/(b) now with the reviewer |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
