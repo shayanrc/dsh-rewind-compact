@@ -13,15 +13,35 @@ Two layers of testing:
 
 ## Automated browser E2E — verified green
 
+The script drives a real browser, so it needs a Playwright install of its
+own: a virtualenv plus a chromium download. Neither belongs in the repo — build
+them once per machine in a scratch dir outside it.
+
 ```sh
+# One-time: scratch dir with venv + chromium (a few hundred MB, any writable path)
 REPO=$(git rev-parse --show-toplevel)        # run from the repo root
-SCRATCH="${SCRATCH:-$HOME/.rwc-test}"        # venv + browsers live here
-cd "$SCRATCH"
-./venv/bin/python -m playwright install chromium
+SCRATCH="${SCRATCH:-$HOME/.rwc-test}"        # venv, chromium and screenshots live here
+
+python3 -m venv "$SCRATCH/venv"               # any CPython 3.9+ (3.13 used here)
+"$SCRATCH/venv/bin/python" -m pip install --upgrade pip playwright
 PLAYWRIGHT_BROWSERS_PATH="$SCRATCH/browsers" \
-  ./venv/bin/python "$REPO/scripts/e2e-web-test.py" \
+  "$SCRATCH/venv/bin/python" -m playwright install chromium
+```
+
+```sh
+# Each run: drive the E2E against a live web profile
+cd "$SCRATCH"                                # the script writes its step screenshots to cwd
+PLAYWRIGHT_BROWSERS_PATH="$SCRATCH/browsers" \
+  "$SCRATCH/venv/bin/python" "$REPO/scripts/e2e-web-test.py" \
   "http://127.0.0.1:8124/?token=<fresh-boot-token>"
 ```
+
+`PLAYWRIGHT_BROWSERS_PATH` must be the same at install and run time; that is
+what keeps chromium out of `~/.cache/ms-playwright`. To start over — or to
+relocate the scratch dir — `rm -rf "$SCRATCH"` and rerun the one-time block: a
+venv records its own absolute path when it is created, so moving an existing
+one breaks its `pip`/`playwright` entry points. The install needs network
+access to PyPI and a writable pip cache.
 
 What it does: new session → two turns → `/rewind-compact` → pick a turn and a
 side in the two dialogs → wait → print the result message.

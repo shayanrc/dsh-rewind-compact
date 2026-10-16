@@ -14,9 +14,8 @@ Interaction notes learned the hard way:
     complete the whole flow.
 
 Usage:
-  python -m venv venv && ./venv/bin/pip install playwright
-  ./venv/bin/python -m playwright install chromium
-  PLAYWRIGHT_BROWSERS_PATH=... ./venv/bin/python e2e-web-test.py <token-url>
+  See "Automated browser E2E" in TESTING.md for the one-time scratch-dir setup
+  (venv + chromium) and the exact run command.
 
 Pass the boot URL (with ?token=...) as argv[1].
 """
