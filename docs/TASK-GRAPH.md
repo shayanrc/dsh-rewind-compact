@@ -140,7 +140,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 
 | id | P | title | files | depends_on | status |
 |---|---|---|---|---|---|
-| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — web half PASSED `f357984`; **TUI half pending a human** (blocks merge) |
+| RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — web half PASSED `f357984`; TUI half blocked by RC-04-f2 |
+| RC-04-f2 | **P0** | **TUI picker never offers the plugin modes:** `rewindPromptAnswer` matches the row seq against `turn/start` seqs, but the picker sends user-message seqs | `lib/tui-rewind.js` | RC-04 | fixing (dispatched `9dcb0d13`) |
 | RC-04h | P3 | Compose from the child's folded surface, not the raw log; make tail replay child-aware | `lib/tui-rewind.js` | RC-04 | proposed (reviewer: wider than idempotency) |
 | RC-04i | P3 | Harness-version surface compat: 0.2.0 adds `developer/message` to the surface, `lib/events.js` `SURFACE_TYPES` omits it | `lib/events.js`, `tests/` | RC-04 | proposed |
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
