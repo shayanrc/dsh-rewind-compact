@@ -142,7 +142,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 | id | P | title | files | depends_on | status |
 |---|---|---|---|---|---|
 | RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — web half PASSED `f357984`; TUI half blocked by RC-04-f2 |
-| RC-04-f2 | **P0** | **TUI picker never offers the plugin modes:** `rewindPromptAnswer` matches the row seq against `turn/start` seqs, but the picker sends user-message seqs | `lib/tui-rewind.js` | RC-04 | verifying — fix `60f3ced` merged at `a2addec`, installed; independent check `7f62d68a` running |
+| RC-04-f2 | **P0** | **TUI picker never offers the plugin modes:** `rewindPromptAnswer` matches the row seq against `turn/start` seqs, but the picker sends user-message seqs | `lib/tui-rewind.js` | RC-04 | **done** — fix `60f3ced`, verify `1f76e50`, merged `a2addec`, installed |
+| RC-04-f3 | P3 | Picker rows inside the still-open turn describe the previous completed turn while the label says "this point" | `lib/tui-rewind.js` | RC-04 | proposed |
 | RC-04h | P3 | Compose from the child's folded surface, not the raw log; make tail replay child-aware | `lib/tui-rewind.js` | RC-04 | proposed (reviewer: wider than idempotency) |
 | RC-04i | P3 | Harness-version surface compat: 0.2.0 adds `developer/message` to the surface, `lib/events.js` `SURFACE_TYPES` omits it | `lib/events.js`, `tests/` | RC-04 | proposed |
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
@@ -621,6 +622,30 @@ regression guard. Suite 138/138, `npm run check` green. The fixer stalled once m
 change landed, the tests did not, report empty, worktree uncommitted) and was re-armed with a
 single-file scope per the stall-recovery playbook. Merged into `integration` and reinstalled into
 `tui-rc-test` for the human TUI run; independent verification on `rc-04-f2-verify`.
+
+**RC-04-f2 verification (agent 7f62d68a, commit `1f76e50`) — CONFIRMED WITH CAVEATS, no behavioural
+defect.** Its own transcript, modelled on a real log, maps correctly: a user message in the first /
+middle / last completed turn → `after` only / both / `before` only; a `turn/start` seq still
+self-maps; an assistant row mid-turn maps to its own turn; a row past the last boundary maps to the
+last turn — zero warnings on all mapped cases. All four `undefined` paths emit **exactly one**
+warning and no info line. Its inline differential (no history reach-back) shows the old exact match
+returns `-1` for every user row while the shipped code returns modes; a revert simulation fails the
+fixer's test 1 plus 6/11 of the verifier's. Scope is only `lib/tui-rewind.js` (+53) and
+`tests/tui-rewind.test.js` (+106) — **`rewindDoneAnswer` and the `tui/rewind-done` path are
+untouched**. Suite 149/149, `npm run check` green.
+
+Two caveats, neither a defect:
+
+- **Open-turn rows** (from a real-data scan over 118 transcripts): a `src=user` row inside a turn
+  that has a `turn/start` but no `turn/end` maps to the **previous completed** boundary. That is
+  coherent with the TUI's own fork (which walks back to the open turn's start and cuts at
+  `start - 1`, keeping exactly the completed prefix), and pre-fix those rows returned `undefined`,
+  so it is not a regression — but the mode descriptions say "this point" while the point is the
+  previous completed turn → **RC-04-f3**. When the open turn is the first, the row correctly yields
+  `undefined` plus a warning (completed turns only, per R6).
+- **The fixer's revert comment overstates its own coverage:** it claims tests 1–3 fail when the
+  mapping is reverted, but only test 1 does (2 and 3 still pass). Trivial in effect, yet the comment
+  is what a future maintainer will trust → folded into RC-09's doc sweep.
 
 ### RC-04 handoff
 
