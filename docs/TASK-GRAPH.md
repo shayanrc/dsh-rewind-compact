@@ -752,6 +752,44 @@ Two behavioural caveats (not defects), now with the reviewer:
   a test runner would then exit 0 — the same "silent pass" class this whole effort has been
   closing. The minimal fix is to install the guard only in the `invokedDirectly` branch.
 
+**Whole-arc review (agent 1ad52006, commit `a52b932`) — APPROVE-WITH-FOLLOWUPS; exactly one merge
+gate.** The reviewer worked from `/tmp` mutants and a `--depth 1` clone rather than from the
+branch's own tests.
+
+- **(b) gates the merge.** Demonstrated: an importer that sets `process.exitCode = 42` and writes
+  400 KB into `| head -c 1` ends with **status 0 and no stderr**, while the same importer against
+  guard-less source surfaces EPIPE. Four arc test files import these modules, so the trap sits in
+  the process that adjudicates the arc — a CI EPIPE on the runner's stdout can turn a failing
+  `node --test` green. Dispatched as **RC-08a-g** (P0).
+- **(a) is real but non-blocking**, and the reviewer went further than adjudicating it: it built
+  and verified a strictly better guard on a copy — `if (err?.code === 'EPIPE') return` (swallow,
+  keep the exit code) yields head-close → 1 missing / 0 present / 2 bad-boundary with empty
+  stderr, and it explained *why* that is safe: `main()` is synchronous, so `process.exitCode` is
+  always set before the EPIPE event can fire. Unix convention is SIGPIPE death (141), not 0 →
+  RC-08a-3.
+- **Test honesty — the most valuable result.** All five EPIPE tests **pass** under a mutant that
+  restores `process.exit(main())`, because they assert "exit 0, no unhandled error" and
+  `process.exit(0)` satisfies that: they are **not truncation detectors**. Two fix-verify
+  detectors are **load-flaky** — they passed with the defect live in a 4-file parallel run and
+  failed when run alone. Every pipe detector uses `spawnSync`, which drains concurrently with the
+  write, so truncation is a *race*; a no-read-until-exit harness truncates the mutant 20/20. Test
+  I is the mirror race and can fail spuriously. rc08a-2's coverage is genuine; no pure tautologies.
+- **Silent skips.** Nine `t.skip` sites; the load-bearing ones are the real-log probes, which skip
+  wherever `$DSH_HOME/sessions` is absent (the only independent-parser differential, and PROBE 1
+  pins two developer UUIDs), plus the history skips.
+- **Three `git show` reach-backs** (`40ce6d9~1`, `e29d603`, `95d9ac6~1`). In a `--depth 1` clone the
+  first two **skip silently** — the differential evidence vanishes and the run stays green at
+  11 pass / 2 skip / exit 0 — while the third hard-fails. All three break under rebase/squash →
+  RC-08a-5.
+- **Merge shape:** 1799 lines of arc tests against 611 lines of script across 6 files; recommend
+  two unit files plus one `cli-stdout` file, and replacing `cpSync($DSH_HOME/sessions)` (44 MB
+  here, unbounded in general) with synthetics → RC-08a-6, RC-08a-8.
+- **New finding, missed by every earlier round:** `invokedDirectly` miscompares whenever the
+  resolved module path differs textually from `argv[1]`, so both scripts do nothing and exit **0
+  with no output** — for a symlinked entry point, or a path containing `#` (`new URL('file://' + p)`
+  swallows the rest as a fragment). Pre-existing from `b1d35fa`, same silent-success family,
+  untested → RC-08a-7.
+
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
 - `scripts/inspect-fork.mjs <sessions-root> [session-id]`: for a child session log,
