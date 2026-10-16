@@ -128,7 +128,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying — defects fixed `c46c919` (56/56); independent re-verification running |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | fixing — re-verify `40ce6d9` CONFIRMED + new EPIPE side effect; RC-08a-i dispatched |
+| RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | fixing (dispatched) — must land before merge |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
@@ -676,6 +677,27 @@ The fixer used a synthetic root rather than live `$DSH_HOME/sessions` because li
 rewrite `mtimeMs` between the two CLI runs (a 6-byte false diff). The three characterization
 tests are now regression tests asserting the correct behaviour, with the other assertions
 untouched. Awaiting independent re-verification (`rc/08a-fix-verify`).
+
+**Re-verification (agent 185479f7, commit `40ce6d9`) — CONFIRMED WITH CAVEATS.** Its own
+fixtures reproduce the fix: a 450-dir synthetic root gives pipe = redirect = **324003** bytes
+with valid JSON; a frozen copy of the real `$DSH_HOME/sessions` (188 logs) gives **180329** on
+both paths, byte-identical across runs; `replay-check` on 3000 ids gives **246035** on both.
+Pre-fix (`git show e29d603`) truncates — 65536 under a shell pipe, 146176 under a
+concurrently draining parent — always with exit 0. All three converted regression tests
+**FAIL** against the pre-fix scripts, so they are genuine. Coverage held: 21 tests,
+assertions 112→118, only the three `DEFECT` tests converted, and the two silent `t.skip`
+fallbacks replaced by a hard >64 KiB assertion. `main()` is synchronous in both scripts
+(a counterfactual async main would throw `ERR_INVALID_ARG_TYPE` on Node 26 — loud, not
+silent). The exit-code table was verified end to end, including a 400-digit boundary → 2.
+
+- **New side effect (RC-08a-i):** with natural draining, an early-closing consumer now
+  crashes — `inspect-fork --json | head -c 1` → exit 1 with
+  `Unhandled 'error' event … write EPIPE`, where pre-fix it exited 0. Full consumers
+  (`| wc -c`, `| cat`, `| jq`, `> file`) stay clean. Dispatched to fixing.
+- **Accuracy notes:** "exactly 65536 bytes" is consumer-dependent (65536 under a shell pipe,
+  146176 under a draining parent) — always below the total, always exit 0. And `1e400` is
+  rejected by the decimal regex, not the `Number.isFinite` guard; Infinity is reachable only
+  through a huge all-digit boundary. The fix's code comment said otherwise.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
