@@ -123,7 +123,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
 | RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | reviewing (fix `3c70746`, verify `75d211d`) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **fixing** — verify `e29d603` found rc08a-1 (piped truncation) and rc08a-2 (boundary) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying — defects fixed `c46c919` (56/56); independent re-verification running |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
@@ -657,6 +657,18 @@ wrapper-with-id sources.
 - The verifier encoded both defects as green *characterization* tests (`DEFECT rc08a-1`,
   `-1b`, `-2`); the fix must convert them into regression tests asserting correct behaviour
   without weakening the other assertions.
+
+**Defect fix (`c46c919`).** Both scripts now set `process.exitCode = main()` instead of
+calling `process.exit(main())`, and `replay-check` validates its boundary through an exported
+`parseBoundary()` (finite integer, optional leading `-`; otherwise stderr naming the value
+plus usage, exit **2**). `parseJsonl(text, file)` now names the file on invalid JSON.
+Measured: a frozen 187-log root pipes **171443** bytes and parses, matching the file
+redirect; a 500-session synthetic root gives pipe = file = **343807** where the old code gave
+65536; `replay-check` on a 20000-turn fixture pipes **959987** with its final line present.
+The fixer used a synthetic root rather than live `$DSH_HOME/sessions` because live logs
+rewrite `mtimeMs` between the two CLI runs (a 6-byte false diff). The three characterization
+tests are now regression tests asserting the correct behaviour, with the other assertions
+untouched. Awaiting independent re-verification (`rc/08a-fix-verify`).
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
