@@ -123,7 +123,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
 | RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | reviewing (fix `3c70746`, verify `75d211d`) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying (fix `b1d35fa`) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **fixing** — verify `e29d603` found rc08a-1 (piped truncation) and rc08a-2 (boundary) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
@@ -623,7 +623,38 @@ reproduction, not a hand-rolled inspection. r2 already added contract step 5
 ("hybrid scaffold placement"), so the remaining scope is narrower than when this
 node was written.
 
-### RC-08a — fork-artifact inspector + replay assertion helper (fix `b1d35fa`, verifying)
+**Reference target (real, not hypothetical).** The verifier's 182-log census turned up a
+correctly created seeded child — `--mnt-…--/bdd7d050-…` — with exactly the shape this
+node's fix must produce: `cwd: /mnt/Workspace/Workspace/dsh-rewind-compact`,
+`parentSession: c03b1979-…`, `isSeeded: true`, `endSeed: {"inherited":true}`,
+`surface.first: system/message@14`. Compare a post-fix fork against it rather than against
+a description.
+
+**Verification result (agent 5a421955) — CONFIRMED WITH CAVEATS; 2 defects.** Its own
+`unzstd -c` + parser (never the fixer's helpers) matched the CLI on five real logs and on a
+full 182-log `--json` listing walk with **0 mismatches** (path, header, endSeed, surface,
+mtime-desc order, no extra/`undefined` keys). The null contract holds (`=== null`, key
+present, literal `null` in JSON). `replayCheck` survived refutation: wrapper-shaped child
+ids count as present, strict `seq > boundary`, dedup, stable order — and the one real gap it
+found (wrapper-shaped *source* records without `data.id` being dropped from `expected`) is
+**not a defect for this repo**: a census of 182 logs found 1551 `user/message` with
+`data.id`, 12 id-less (rewind-compact's own scaffolds), 2 wrapper-without-id, and **zero**
+wrapper-with-id sources.
+
+- **DEFECT rc08a-1 (significant, both scripts):** `process.exit(main())` exits before the
+  async pipe write flushes, so piped stdout truncates at 65536 bytes with exit 0 while
+  redirection is complete — `--json | jq` silently loses data. Reproduced here
+  independently: pipe **65536** vs redirect **174910**, and the piped text fails to parse
+  (`Unterminated string at position 65536`).
+- **DEFECT rc08a-2 (minor):** the `replay-check` boundary argument is unvalidated — `abc`,
+  `''` and `1e400` are accepted and report `missing: (none)` with exit 0, so a typo reads as
+  success. Should be usage exit 2.
+- **Caveat:** `inheritedEventCount` is never numeric across all 182 real logs (always
+  `null`), so that field's real-data coverage is vacuous — `endSeed` is the signal that
+  matters. **Caveat:** a valid-zstd-but-invalid-JSONL error names the line but not the file.
+- The verifier encoded both defects as green *characterization* tests (`DEFECT rc08a-1`,
+  `-1b`, `-2`); the fix must convert them into regression tests asserting correct behaviour
+  without weakening the other assertions.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
