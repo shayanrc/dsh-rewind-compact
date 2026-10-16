@@ -106,9 +106,9 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
 | RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | fixing (dispatched) — fix: declare `input: { hint }` |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | fixing (dispatched) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying (fix `b1d35fa`) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
-| RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked |
+| RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
 | RC-03v | P1 | Verify r2's committed before-mode change (`f6` re-check included) | `lib/tool.js` | r2 (external) | blocked until r2 commits |
 | RC-05 | P2 | Fork summaries are never hybrid: implement child-side summarization or downgrade the claim | `SPEC.md` §R5, `README.md` | RC-01, RC-02, RC-03, RC-04 | blocked |
@@ -568,7 +568,7 @@ reproduction, not a hand-rolled inspection. r2 already added contract step 5
 ("hybrid scaffold placement"), so the remaining scope is narrower than when this
 node was written.
 
-### RC-08a — fork-artifact inspector + replay assertion helper (dispatched)
+### RC-08a — fork-artifact inspector + replay assertion helper (fix `b1d35fa`, verifying)
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
@@ -579,6 +579,15 @@ New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 - `scripts/replay-check.mjs`: `replayCheck(sourceEvents, boundary, childEvents)` →
   `{ expected, present, missing }` over `user/message` ids after the boundary; used by
   tier-1 E2E agents to prove no tail user turn was dropped.
+
+**Result (`b1d35fa`).** 35/35 tests. Real-data run against
+`_no-cwd/008ba13e-0147-425c-a990-a9d80be186ae` — the child from RC-06e's stock web fork —
+returns `cwd: null`, `parentSession: null`, `isSeeded: false`,
+`inheritedEventCount: null`, `endSeed: {}`, `surface.count: 3`; independently re-read here
+with `unzstd -c` plus a hand parser and matching the CLI exactly. That output is
+**RC-01's measured before-state**. Tool caveat worth knowing: real header records carry
+`id`/`version`/`cwd`/`parentSession`/`isSeeded` at the **record top level**, not under
+`data`, and real `session/end-seed` payloads are `{}`.
 
 ### RC-08b — pin `CreateAgentOptions` (blocked on r2)
 
@@ -643,3 +652,69 @@ Type an arg-bearing command, assert `command/run = 1` and the completion message
 `scripts/e2e-web-rc06.py` (on `rc/06-e2e`) is the driver template. Note the checklist
 interaction recorded above: after this lands, the capitalised `Unknown turn` is the
 correct assertion for an out-of-range point.
+
+---
+
+## RC-01 — fork create-options use the adapter's input names, not the real contract
+
+**Priority** P1 · **Status** blocked on RC-08b · **Files** `lib/rewind.js`
+
+### Root cause
+
+`lib/rewind.js` passes `cwd`, `parentSession`, `inheritedCount` and `title` at the **top
+level** of `agents.create`. Those are the *input* names of the TUI's own adapter
+(`liveSessionCreateOptions`, `dsh-tui .../compat/liveSession.js:206-223`), which this
+plugin never called. The real `CreateAgentOptions` reads `meta.cwd`,
+`meta.parentSession`, `meta.isSeeded` and `inheritedEventCount`, so all four are
+silently dropped.
+
+### Measured before-state (real, not inferred)
+
+RC-08a's inspector, run on the child produced by RC-06e's stock web fork
+(`_no-cwd/008ba13e-0147-425c-a990-a9d80be186ae`) and independently re-read with
+`unzstd -c` plus a hand parser:
+
+```
+cwd: null    parentSession: null    isSeeded: false    inheritedEventCount: null
+```
+
+Consequences: the child lands in `_no-cwd` (README bullet 5), has no lineage so it is
+absent from the session tree entirely, and is marked unseeded with inherited count 0 —
+so the copied prefix is treated as the child's own history and `session/end-seed` is
+`{}` rather than `{inherited: true}`.
+
+### Also in scope
+
+`agentOptions` / `agentPreset` are not carried, so the child falls back to the loop's
+default provider/model instead of the source's route.
+
+### Fix
+
+Build the real options object, mirroring `liveSessionCreateOptions`:
+`meta: { cwd, parentSession, isSeeded: true }`, `inheritedEventCount: seed.length`, and
+`agentOptions` / `agentPreset` from the source when available. `title` is **not** a
+`CreateAgentOptions` field — that is RC-02.
+
+### Acceptance
+
+RC-08b's probe passes; a web fork's child header shows non-null `cwd` and
+`parentSession`, `isSeeded: true`, `inheritedEventCount === seed.length` (measured with
+`scripts/inspect-fork.mjs`); the source session is untouched.
+
+### Verification (independent)
+
+Fork from a worktree, locate the child with `scripts/inspect-fork.mjs`, and compare the
+header against a hand-read `unzstd -c` output. Confirm the child now appears under the
+source's bucket and lineage, and diff the pre-fix header (`null`/`null`/`false`/`null`)
+against the post-fix one.
+
+### Review
+
+Against `docs/HARNESS-CONTRACTS.md` §8 and the installed `CreateAgentOptions`
+declaration; confirm no top-level `title`/`cwd`/`parentSession`/`inheritedCount`
+remains anywhere in `lib/rewind.js`.
+
+### E2E (tier 1, web)
+
+RC-01e: fork via `/rewind-compact`, then inspect the child header — all four fields set,
+source still resumable.
