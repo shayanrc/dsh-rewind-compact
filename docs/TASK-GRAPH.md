@@ -121,7 +121,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
 | RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | verifying (fix `3c70746`) |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | reviewing (fix `3c70746`, verify `75d211d`) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | verifying (fix `b1d35fa`) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
@@ -676,8 +676,41 @@ probe fails.
 
 ## RC-11 — the web client never dispatches command arguments
 
-**Priority** P2 · **Status** verifying ·
+**Priority** P2 · **Status** reviewing ·
 **Files** `lib/command.js`, `tests/command-registration.test.js` · fix `3c70746`
+
+**Verification result (agent 81ba51e6) — CONFIRMED WITH CAVEATS.** It did not mirror the
+seam. It drove the real `CommandRuntime.register()` from `dsh-commands@0.1.5-rc.2` (the
+shipped shape registers; `{}`, empty, whitespace and non-string hints plus a non-boolean
+`attachments` all throw the seam's own `TypeError`s), then recovered the **real browser
+client's `CommandUiRuntime`** by stubbing `window.__ModuleLoader__` and called the genuine
+`matchEnter`: with `input`, `/rewind-compact 3 after` → `{claim:{token, hint, submit}}` and
+`submit('3 after')` executes; without it, the same line → `undefined`. Differential: the
+pre-fix definition has no `input` property, handler `toString()` is identical, and the diff
+is exactly the one added line.
+
+**Three behaviour changes ride the fix** (all consistent with `leadingInput`, but
+user-visible and awaiting review ratification): (1) a bare `/rewind-compact` + Enter now
+submits through the claim path instead of `runDetached` — still executes, but error
+surfacing moves to the composer submit path; (2) a space typed after the name claims
+immediately via `matchSpace`, locking the token (intended arg-entry UX; editing releases
+it); (3) `/rewind-compact <args>` **with attachments** now throws the composer refusal
+(`input.attachments !== true`) where before it fell through as an ordinary prompt.
+
+**Test-quality caveat.** The fixer's `tests/command-registration.test.js` re-implements the
+seam's validation in its own assertions and never touches the real seam or `matchEnter`; it
+would pass unchanged if `dsh-commands`' validator or the client's decision table changed,
+and it cannot detect the pre-fix bug. The verifier's `tests/rc11-verify.test.js` (5 tests)
+drives the real seam, the real `matchEnter`, the pre-fix definition, and the handler's
+tokenisation. Its `git show 3c70746~1` reach-back is shallow-clone-fragile.
+
+**Peer-resolution hack (test-only).** Fails loudly in all five probed environments
+(`DSH_HOME` set, unset, `/nonexistent`, empty dir, empty `profiles/node_modules`); it
+intercepts only `ERR_MODULE_NOT_FOUND` for bare specifiers and rethrows everything else, so
+it cannot turn a genuine failure into a pass. Residual masking: it resolves from the shared
+profile store even for an *undeclared* dependency, so this unit test is not a packaging
+gate. `module.register()` is deprecated on Node 26 (DEP0205); the verifier prefers
+`registerHooks` when available.
 
 **Result.** One added line in the registration object:
 `input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
