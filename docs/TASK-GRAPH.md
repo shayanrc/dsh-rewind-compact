@@ -582,6 +582,33 @@ the tail verbatim past it. **D** was dispatched and is what `d32a91b` implements
   followup nodes. Item 1 (silent non-shadowing fallback that still reports success)
   is the one most likely to deserve a fix rather than a rationale.
 
+### RC-04-f2 — the picker never offered the modes (found by live human testing)
+
+Launching the TUI on `tui-rc-test` showed the plugin loading and subscribing — the log carries
+`[rewind-compact] subscribed to tui/rewind-prompt and tui/rewind-done decision events` and
+`[rewind-compact] entry loaded`, with **no D-7 denial** — so the failure had to be inside
+`rewindPromptAnswer`. It is:
+
+- the TUI builds the picker's rows from the user's own messages
+  (`channel.rows.filter(row => row.kind === 'user')`, `Chat.js:3596`) and dispatches
+  `seq: row.seq` — a **user-message** seq;
+- `rewindPromptAnswer` matched that with `boundaries.findIndex(b => b.seq === seq)`, where
+  `boundaries` carries **`turn/start`** seqs — so no row ever matched and the function always
+  returned `undefined`.
+
+Reproduced against the real module on a two-turn transcript:
+
+```
+seq=6 (user message, turn 2) -> undefined        seq=5 (turn/start, turn 2) -> before
+seq=2 (user message, turn 1) -> undefined        seq=1 (turn/start, turn 1) -> after
+```
+
+So the modes were never offered in this build: no test exercised `rewindPromptAnswer` with the row
+shape the picker actually sends. The fix resolves the row to its **enclosing turn** (the last
+boundary with `seq <= row seq`) and makes every early `return undefined` log its reason through
+`probeLogger` — this silent no-op is precisely what hid the defect from the TUI log. Dispatched as
+`9dcb0d13` on `rc-04-f2`.
+
 ### RC-04 handoff
 
 Fix committed by the fixer on `rc/04-tui-before-mode` @ `d32a91b`; relocated there by
@@ -589,7 +616,9 @@ the orchestrator because the worktree rule did not yet exist when the fixer star
 Files: `lib/tui-rewind.js`, `tests/tui-rewind.test.js`. The verifier committed its own
 harness as `c4b7b4d` on `rc/04-verify`. The reviewer worked on `rc/04-review` (cut from
 `c4b7b4d`) and **rejected** at `7a2e767`; the fix is being redone on `rc/04-f1`.
-Repro for the current fix: `cd …/worktrees/rc-04-f1 && node --test tests/`.
+Repro for the current fix: `cd …/worktrees/rc-04-f1 && node --test tests/`. The f1 chain was
+approved (`cb085fc`) and integrated at `e155984`; the first live TUI run then found **RC-04-f2**
+(above), now fixed on `rc-04-f2`.
 
 ---
 
