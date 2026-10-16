@@ -5,6 +5,7 @@ Navigation pointers — read the target only when the branch fires:
 - Implementing or changing behavior → `SPEC.md` (requirements R1–R12 + acceptance criteria).
 - Harness API facts (tool/skill/command dialects, fork recipe, transcript envelope, decision events, pnpm quirks) → `docs/HARNESS-CONTRACTS.md`.
 - Verifying (web/TUI test runs, grants, live-boot findings) → `TESTING.md`.
+- Running a test end to end (refresh a profile, boot the web rig, drive the TUI picker, read a pass) → `.agent/skills/testing-rewind-compact/SKILL.md` (+ its `scripts/` for transcript forensics).
 - Before claiming done → run `npm run check` (contract probe + syntax + tests).
 
 ## Surface map — where a change goes
