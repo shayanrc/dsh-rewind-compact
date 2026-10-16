@@ -121,9 +121,9 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
 | RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **merging** — full chain green (fix `3c70746`, verify `75d211d`, review `f1001e3`, e2e `c65c7ee` PASSED); RC-11a/b to land first |
-| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | verifying (fix `010be21`; coverage-integrity check dispatched) |
-| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | verifying (fix `010be21`, same dispatch) |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **merging** — full chain green (fix `3c70746`, verify `75d211d`, review `f1001e3`, e2e `c65c7ee`); RC-11a/b verified `5f32596` |
+| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | **done** — verified `5f32596` |
+| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | **done** — verified `5f32596` |
 | RC-11c | P3 | Shared peer-resolution helper: package.json allowlist, `registerHooks`, loud failure | `tests/support/harness-peers.mjs` | — | proposed (RC-01/02/05 need it) |
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
@@ -905,6 +905,31 @@ deletions** is coverage loss. So the gate here is an independent coverage-integr
 — fixture fidelity against `git show 3c70746~1`, mutation red-sets, and confirmation that each
 removed assertion's claim is still covered by a kept test — rather than a fresh review and web
 E2E. This deviation is recorded so it stays auditable.
+
+**RC-11a/b verification (agent fb69cbfc, commit `5f32596`) — CONFIRMED WITH ONE CAVEAT, and the
+caveat is in my gate prompt rather than the fix.**
+
+- **Fixture fidelity: faithful.** `git show 3c70746~1:lib/command.js` vs
+  `tests/fixtures/command.pre-rc11.js` differs in exactly three hunks — a 15-line all-comment
+  provenance header and the two rebased specifiers. Fixture vs the shipped source differs by those
+  plus the single added `input` line, so the "one-line fix" claim holds byte-for-byte.
+- **No silent skip.** No `git show` in code and no `child_process` anywhere in `tests/`; the only
+  two `t.skip`s are gated on the client bundle being absent, and it is installed, so the run
+  reports `skipped 0`. The differential imports the fixture **statically**, so a missing fixture
+  throws rather than skipping.
+- **Mutation red sets.** Delete the `input:` line → exactly two red (seam-accept + differential).
+  Rename the command → four red. `attachments: 'yes'` → one red (seam-accept).
+- **Removed assertions are genuinely redundant:** every clause of both removed tests is caught by
+  a kept test that is strictly stronger.
+- Suite 33/33 with 0 skipped; `npm run check` green. The verifier also falsified its *own* fixture
+  tests (a one-space tamper turns two red), so they are not vacuous.
+
+> **Correction to this graph's own gate criterion.** The verification brief predicted that
+> `hint: ''` would turn the *seam-reject* test red. It does not: that test replaces `input`
+> wholesale per malformed case, so the shipped value is irrelevant — and the differential stays
+> green because `matchEnter` claims on the **presence** of `descriptor.input`, not on the hint
+> being non-empty. The correct criterion is that the **seam-accept** test's `deepEqual` goes red.
+> Do not use "seam-reject goes red" as a pass criterion again.
 
 **Result.** One added line in the registration object:
 `input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
