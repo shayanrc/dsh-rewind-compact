@@ -129,7 +129,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | **fixing** — arc review `a52b932` APPROVE-WITH-FOLLOWUPS; gate `RC-08a-g` dispatched |
-| RC-08a-g | **P0** | **Merge gate:** move the stdout EPIPE guard inside `invokedDirectly` so importing a module cannot force exit 0 | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | fixing (dispatched) |
+| RC-08a-g | **P0** | **Merge gate:** move the stdout EPIPE guard inside `invokedDirectly` so importing a module cannot force exit 0 | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verifying (fix `c4d2937`, narrow independent check dispatched) |
 | RC-08a-3 | P3 | Swallow EPIPE (`return`) instead of exiting 0, preserving the real exit code | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | proposed |
 | RC-08a-4 | P3 | De-flake the two load-flaky truncation detectors; soften the mirror race in test I | `tests/` | RC-08a | proposed |
 | RC-08a-5 | P3 | Replace the three `git show` reach-backs with a checked-in pre-fix fixture | `tests/fixtures/`, `tests/` | RC-08a | proposed |
@@ -789,6 +789,17 @@ branch's own tests.
   with no output** — for a symlinked entry point, or a path containing `#` (`new URL('file://' + p)`
   swallows the rest as a fragment). Pre-existing from `b1d35fa`, same silent-success family,
   untested → RC-08a-7.
+
+**Merge gate fixed (`c4d2937`, RC-08a-g).** The module-top-level `process.stdout.on('error', …)` is
+gone from both scripts; it now installs inside `if (invokedDirectly)`, listener first, then
+`process.exitCode = main()`. Re-running the reviewer's importer demonstration (an importer that
+sets `process.exitCode = 42` and writes ~400 KB into `| head -c 1`): **before** status 0 with
+0 bytes of stderr, **after** status 1 with 851 bytes of `Unhandled 'error' event … write EPIPE`.
+The listener-count differential confirms it is not a tautology — importing the pre-fix blob
+changes the stdout `'error'` listener count 0 → 1, importing the fixed module leaves it 0 → 0.
+CLI early-close still exits 0 with empty stderr, and the existing EPIPE tests still pass. Suite
+83/83, `npm run check` green. Narrow independent verification dispatched on
+`rc-08a-guard-verify`.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
