@@ -121,9 +121,9 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
 | RC-04k | P3 | Docs: `AGENTS.md:19`/`:38`, the inclusive-end note, and the shallow-clone-unsafe `git show` | docs, `tests/` | RC-04 | proposed |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **e2e** — fix `3c70746`, verify `75d211d`, review `f1001e3` APPROVE-WITH-FOLLOWUPS; RC-11e dispatched |
-| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | proposed (do before merge) |
-| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | proposed |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | **merging** — full chain green (fix `3c70746`, verify `75d211d`, review `f1001e3`, e2e `c65c7ee` PASSED); RC-11a/b to land first |
+| RC-11a | P3 | Test consolidation: keep the verifier's file, fold in the ctx-purity/name checks, drop the mirrored-seam ones | `tests/` | RC-11 | fixing (dispatched, combined with RC-11b) |
+| RC-11b | P3 | History-independent differential: checked-in pre-fix fixture instead of `git show <fix>~1` | `tests/fixtures/`, `tests/` | RC-11 | fixing (dispatched, combined with RC-11a) |
 | RC-11c | P3 | Shared peer-resolution helper: package.json allowlist, `registerHooks`, loud failure | `tests/support/harness-peers.mjs` | — | proposed (RC-01/02/05 need it) |
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
@@ -336,6 +336,23 @@ Consequences for every E2E task:
   `/rewind-compact 99 after` and the lowercase tool string no longer applies. RC-06e's
   evidence stays valid for its own commit (taken before RC-11); the shared checklist and
   the driver template must accept the post-RC-11 surface.
+
+**Checklist corrections from RC-11e (second E2E round):**
+
+- **Assert the claim, not the text.** After `/rewind-compact` + space the composer carries
+  `data-phase="claimed"` and a `style="… --dsh-composer-hint: &quot;[turn] [after|before]&quot;"`
+  custom property; the hint is painted by
+  `…_input p:last-child:after { content: var(--dsh-composer-hint) }`, and **pseudo-element
+  content never appears in `innerText`**. Assert the attribute or the custom property, or read
+  the screenshot — never `body contains '[turn] [after|before]'`.
+- **Choose a point that can actually fork.** With two turns, `/rewind-compact 2 after` is a
+  genuine no-op, so it returns the handler's rejection text
+  (`Nothing to compact after turn 2 — pick the other mode.`). That is still the dispatch
+  discriminator — transcript `command/run = 1` with `args: " 2 after"` and **0** `tool/call`,
+  against 0 pre-fix — but the *fork* proof needs `/rewind-compact 1 after`.
+- **One app launch per command.** A command claim or picker survives cross-session navigation
+  in a single page, which made an earlier combined run's transcript attribution unreliable.
+  Reload between cases.
 
 ### What an E2E pass must produce (committed as `docs/e2e/RC-<n>.md`)
 
@@ -855,6 +872,22 @@ layer really executing.
   `dsh-commands/lib/typert.host.js`'s `commands/list` schema includes
   `input?: {hint, attachments?}` — but only the real browser run proves it end to end →
   RC-11e.
+
+**E2E (RC-11e, commit `c65c7ee`) — PASS on all three legs.** Real browser, profile refreshed
+before each launch, three UI gates cleared:
+
+- **Dispatch discriminator.** `/rewind-compact 2 after` → transcript `command/run = 1`,
+  `command/done = 1`, record `{"name":"rewind-compact","args":" 2 after","source":{"kind":"user"}}`,
+  and **0** `tool/call`; pre-fix the same line produced 0. The body shows the handler's own
+  `Nothing to compact after turn 2 — pick the other mode.` (turn 2 is the newest boundary, so
+  `after` is a real no-op — the runbook wrongly expected a completion message here).
+- **Fast path forks directly.** `/rewind-compact 1 after` → `Rewound to turn 1 (after mode). New
+  session: 84bb3d8b-…` with `forking: turn 1, mode after` / `fork done: child 84bb3d8b-…` and
+  **zero** `picker answers` lines; the parent transcript shows `command/run = 1` with args
+  `' 1 after'`; the child `_no-cwd/84bb3d8b-…` has 6 records and 0 `command/run` (seed shape).
+- **Attachment refusal.** Attaching a real file and submitting gives the toast
+  `/rewind-compact does not accept attachments; remove them first`, keeps the draft and the
+  attachment card, opens no picker, and leaves `command/run = 0`.
 
 **Result.** One added line in the registration object:
 `input: { hint: '[turn] [after|before]' }`. Suite 24/24; `npm run check` →
