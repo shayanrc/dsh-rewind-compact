@@ -38,8 +38,9 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
 | `a046d6d` | `rc/11-tests` | RC-11 command input contract — fix, verify, review, web E2E, plus RC-11a/b consolidation |
 | `e155984` | `rc/04-e2e` | RC-04 TUI before-mode system-head fix — fix, verify, review, web E2E half |
 | `58328f7` | `rc-08a-guard-verify` | RC-08a inspector + replay checker — the whole arc plus the EPIPE guard gate (`c4d2937`, verified `743d05c`) |
+| `a2addec` | `rc-04-f2` | RC-04-f2 picker row-seq resolution — the Esc-Esc picker now offers the plugin's modes |
 
-`npm run check` → ALL CONTRACTS PASS; `node --test` **133/133, 0 skipped**. Installed into the
+`npm run check` → ALL CONTRACTS PASS; `node --test` **138/138, 0 skipped**. Installed into the
 throwaway TUI profile with `scripts/reload-profile.sh tui-rc-test` → `OK: lib copy in sync` +
 `OK: rewind-compact/entry composed`; the installed `lib/` is byte-identical to the branch, the
 entry composes, and every merged fix is present in the installed copy.
@@ -141,7 +142,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | id | P | title | files | depends_on | status |
 |---|---|---|---|---|---|
 | RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **e2e** — web half PASSED `f357984`; TUI half blocked by RC-04-f2 |
-| RC-04-f2 | **P0** | **TUI picker never offers the plugin modes:** `rewindPromptAnswer` matches the row seq against `turn/start` seqs, but the picker sends user-message seqs | `lib/tui-rewind.js` | RC-04 | fixing — lib change done and probe-verified (user-message seqs now resolve, silent returns now log); tests incomplete after a fixer stall, re-armed on `rc-04-f2` |
+| RC-04-f2 | **P0** | **TUI picker never offers the plugin modes:** `rewindPromptAnswer` matches the row seq against `turn/start` seqs, but the picker sends user-message seqs | `lib/tui-rewind.js` | RC-04 | verifying — fix `60f3ced` merged at `a2addec`, installed; independent check `7f62d68a` running |
 | RC-04h | P3 | Compose from the child's folded surface, not the raw log; make tail replay child-aware | `lib/tui-rewind.js` | RC-04 | proposed (reviewer: wider than idempotency) |
 | RC-04i | P3 | Harness-version surface compat: 0.2.0 adds `developer/message` to the surface, `lib/events.js` `SURFACE_TYPES` omits it | `lib/events.js`, `tests/` | RC-04 | proposed |
 | RC-04j | P2 | Contract probe is blind to the whole RC-04 defect class (surface-replace validity) | `scripts/check-contracts.mjs` | r2 (external) | proposed |
@@ -608,6 +609,18 @@ shape the picker actually sends. The fix resolves the row to its **enclosing tur
 boundary with `seq <= row seq`) and makes every early `return undefined` log its reason through
 `probeLogger` — this silent no-op is precisely what hid the defect from the TUI log. Dispatched as
 `9dcb0d13` on `rc-04-f2`.
+
+**RC-04-f2 fix (`60f3ced`, merged at `a2addec`).** `enclosingBoundaryIndex(boundaries, seq)` walks
+back to the last boundary with `seq <= row seq`, so a user-message row resolves to the turn that
+opened it while an exact `turn/start` seq still resolves to itself; `filesChangedSince` and the
+`isNoOp` rules are untouched. Every `undefined` return now logs one line naming the reason —
+non-finite seq, unresolvable session, a row before the first boundary, or the single-turn
+both-sides-no-op case. Five tests added (fixture: `turn/start` 1 & 5, `user/message` 2 & 6,
+assistant 3 & 7, `turn/end` 4 & 8); test 1 — a user-message seq now yielding modes — is the
+regression guard. Suite 138/138, `npm run check` green. The fixer stalled once mid-task (the lib
+change landed, the tests did not, report empty, worktree uncommitted) and was re-armed with a
+single-file scope per the stall-recovery playbook. Merged into `integration` and reinstalled into
+`tui-rc-test` for the human TUI run; independent verification on `rc-04-f2-verify`.
 
 ### RC-04 handoff
 
