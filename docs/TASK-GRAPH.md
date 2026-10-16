@@ -129,7 +129,7 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | fixing — re-verify `40ce6d9` CONFIRMED + new EPIPE side effect; RC-08a-i dispatched |
-| RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | fixing (dispatched) — must land before merge |
+| RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verifying (fix `95d9ac6`, independent narrow check dispatched) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
@@ -698,6 +698,18 @@ silent). The exit-code table was verified end to end, including a 400-digit boun
   146176 under a draining parent) — always below the total, always exit 0. And `1e400` is
   rejected by the decimal regex, not the `Number.isFinite` guard; Infinity is reachable only
   through a huge all-digit boundary. The fix's code comment said otherwise.
+
+**EPIPE fix (`95d9ac6`).** A top-level `process.stdout.on('error', …)` in both scripts now
+treats EPIPE as a clean `exit(0)` and rethrows any other write error.
+`inspect-fork --json | head -c 1` and its `replay-check` equivalent exit **0 with empty
+stderr** (before: exit 1 plus `Unhandled 'error' event … write EPIPE`), while full consumers
+are unchanged — `--json | wc -c` = 182037 exit 0, and the replay fixture still exits 1 for its
+genuinely missing tail. The fixer also corrected the `parseBoundary` comment: `1e400` is
+rejected by the all-digit regex, and Infinity is reachable only through a huge all-digit
+boundary (400×`9` → `Number.isFinite` rejects → exit 2). Its `tests/rc08a-epipe.test.js`
+materialises the pre-fix blobs via `git show 40ce6d9~1` and asserts the early-close harness
+fails there, so it is a real regression test; suite 69/69, `npm run check` green. Independent
+narrow re-verification dispatched on `rc/08a-epipe-verify`.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
