@@ -1,0 +1,47 @@
+%% dsh-rewind-compact: pending task dependencies (2026-10-15 23:02 IST)
+%% re-review findings remediated (seed composition, dual-shape scaffold, no-op omission, dedupe, tests); 14/14 green
+flowchart TB
+  subgraph planning ["planning"]
+    spec["Write SPEC.md"]:::done
+  end
+  subgraph implementation ["implementation"]
+    impl["Implement plugin bundle"]:::done
+  end
+  subgraph review ["review"]
+    rvs["Review: spec compliance"]:::done
+    rvq["Review: smells & standards"]:::done
+    rvs2["Re-review: spec compliance"]:::done
+    rvq2["Re-review: smells & standards"]:::done
+  end
+  subgraph remediation ["remediation"]
+    fix["Address review findings"]:::done
+    fix2["Address re-review findings"]:::done
+  end
+  subgraph testing ["testing"]
+    webtest["Web-profile smoke test"]:::done
+    picker["TUI picker integration"]:::done
+    live["Live TUI fork verified"]:::done
+  end
+  subgraph retro ["retro guardrails"]
+    probe["Contract probe + npm run check"]:::done
+    docs["HARNESS-CONTRACTS + AGENTS.md"]:::done
+    devloop["Reload/session-tail scripts"]:::done
+  end
+  goal("Ship reviewed rewind-compact plugin"):::goal
+
+  spec -->|blocks| impl
+  impl -->|blocks| rvs
+  impl -->|blocks| rvq
+  rvs -->|blocks| fix
+  rvq -->|blocks| fix
+  fix -->|blocks| webtest
+  webtest -->|blocks| picker
+  picker -->|blocks| live
+  live -->|blocks| probe
+  probe -->|blocks| docs
+  docs -->|blocks| devloop
+  devloop -->|blocks| rvs2
+  devloop -->|blocks| rvq2
+  rvs2 -->|blocks| fix2
+  rvq2 -->|blocks| fix2
+  fix2 --> goal

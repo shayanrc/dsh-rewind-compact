@@ -1,0 +1,7 @@
+# rewind-compact bundle patch layer. Entries target the harness's own service
+# entries (compaction, sessions, agents, commands, tools, skills, permissions).
+# Never override or disable dsh-* entries; only add new ids under this bundle.
+- insert:
+    - id: rewind-compact/entry
+      name: dsh-rewind-compact
+      config: {}
