@@ -128,8 +128,8 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-11d | P3 | SPEC R3 acceptance gains the `input`-contract requirement (gated spec edit) | `SPEC.md` | RC-11 | proposed |
 | RC-11e | P2 | Tier-1 web E2E: real browser proves descriptor transport, fast path, space-claim, attachment refusal | `scripts/e2e-web-rc11.py`, `docs/e2e/` | RC-11 | fixing (dispatched) |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
-| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | fixing — re-verify `40ce6d9` CONFIRMED + new EPIPE side effect; RC-08a-i dispatched |
-| RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verifying (fix `95d9ac6`, independent narrow check dispatched) |
+| RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | reviewing (whole arc; fixes `b1d35fa`/`c46c919`/`95d9ac6`, verifies `e29d603`/`40ce6d9`/`483e85f`) |
+| RC-08a-i | P3 | EPIPE guard: an early-closing consumer (`\| head -c 1`) must not crash the CLIs | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs` | RC-08a | verified `483e85f`; caveats (a)/(b) now with the reviewer |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked — **before-state measured** (see RC-01 card) |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
@@ -710,6 +710,23 @@ boundary (400×`9` → `Number.isFinite` rejects → exit 2). Its `tests/rc08a-e
 materialises the pre-fix blobs via `git show 40ce6d9~1` and asserts the early-close harness
 fails there, so it is a real regression test; suite 69/69, `npm run check` green. Independent
 narrow re-verification dispatched on `rc/08a-epipe-verify`.
+
+**EPIPE verification (agent 20744a61, commit `483e85f`) — CONFIRMED, no defect.** Using its own
+600-session / 9000-record fixtures and its own harness: both scripts exit 0 with empty stderr on
+early close (5/5 reps, plus a real `| head -c 1` pipeline and `| true`), the pre-fix blobs fail
+5/5 with the unhandled-error stack, pipe == redirect byte-for-byte on a **1,426,893**-byte
+`--json` payload and a **959,987**-byte replay (`cmp` clean), exit codes unchanged, and
+`> /dev/full` still fails loudly (non-EPIPE errors stay loud). Suite 78/78, `npm run check`
+green.
+
+Two behavioural caveats (not defects), now with the reviewer:
+
+- **(a)** `replay-check <src> 1 <partial-child> | head -c 1` exits 0 although the full-consumer
+  answer is 1 — the missing-tail signal is lost once the consumer has gone.
+- **(b)** the guard is top-level and **unconditional**, so importing either module installs a
+  stdout `'error'` listener in the importing process. Tests import these modules, so an EPIPE in
+  a test runner would then exit 0 — the same "silent pass" class this whole effort has been
+  closing. The minimal fix is to install the guard only in the `invokedDirectly` branch.
 
 New files only, so it does not contend with r2's `check-contracts.mjs` worktree.
 
