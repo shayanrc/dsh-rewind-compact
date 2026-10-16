@@ -21,8 +21,10 @@
  *      passes dsh-session's envelope rules — each entry is an object with
  *      exactly the allowed keys and string type / safe-integer seq / time,
  *      and data !== undefined (mirrors dsh-session/lib/index.js:849, which is
- *      not exported). Caught: "seed event at index 0 has an invalid event
- *      envelope".
+ *      not exported). It also builds a real seed (lib/seed.js, both modes) and
+ *      checks the message shape every surface event must carry — mirrors
+ *      assertMessageEventShape (index.js:928, not exported). Caught:
+ *      "seed user/message at index 0 lacks an identified message".
  *   5. inject contract: the entry's inject list contains no optional service
  *      (compaction/logger) that wedges activation on profiles without them
  *      (caught: "1 entry did not activate (waiting for services)").
@@ -111,6 +113,12 @@ console.log('3. skill definition fields (validateDefinition mirror)');
 console.log('4. seed envelope contract (assertSessionEventEnvelope mirror)');
 {
   const surfaceTypes = new Set(['system/message', 'user/message', 'assistant/message', 'tool/result']);
+  const MESSAGE_ROLE_BY_TYPE = {
+    'system/message': 'system',
+    'user/message': 'user',
+    'assistant/message': 'assistant',
+    'tool/result': 'user',
+  };
   const ALLOWED_KEYS = new Set(['type', 'seq', 'time', 'data', 'surfaceOp', 'sourceEventSeqs', 'ignorable']);
   const sessionsRoot = join(DSH_HOME, 'sessions');
   // pick the most recently modified session transcript as the fixture
@@ -159,6 +167,56 @@ console.log('4. seed envelope contract (assertSessionEventEnvelope mirror)');
     } else {
       ok(`${surface.length} surface events from ${fixture.split('/').pop()} pass the envelope contract`);
     }
+
+    // Build real seeds from the fixture and validate the messages they carry.
+    // REPO's seed.js is imported directly: it has no harness imports, so it
+    // resolves outside the profile graph — and the working tree is what we
+    // want to test (the profile's copy can be stale).
+    if (surface.length > 0) {
+      try {
+        const { buildSeed, summaryMessage } = await import(new URL(`file://${join(REPO, 'lib', 'seed.js')}`).href);
+        // append() assigns no id, so the payload the append sites share must carry one.
+        const probeSummary = summaryMessage('probe');
+        if (typeof probeSummary.id !== 'string' || probeSummary.id === '') throw new Error('summaryMessage must carry an id');
+        if (probeSummary.role !== 'user' || !Array.isArray(probeSummary.content) || typeof probeSummary.source?.kind !== 'string') {
+          throw new Error('summaryMessage does not match the user/message shape');
+        }
+        const starts = events.filter((e) => e.type === 'turn/start');
+        const boundary = starts.length
+          ? starts[starts.length - 1].seq - 1
+          : Math.max(0, Math.floor(events.length / 2));
+        const shapeViolations = [];
+        for (const mode of ['after', 'before']) {
+          const seed = buildSeed(events, boundary, mode, { id: 'probe-summary', time: 1 });
+          seed.forEach((event, index) => {
+            if (event === null || typeof event !== 'object' || Array.isArray(event)) {
+              shapeViolations.push(`seed[${index}] (${mode}): not an object`);
+              return;
+            }
+            for (const key of Object.keys(event)) {
+              if (!ALLOWED_KEYS.has(key)) shapeViolations.push(`seed[${index}] (${mode}): unexpected key "${key}"`);
+            }
+            if (event.seq !== index) shapeViolations.push(`seed[${index}] (${mode}): seq not contiguous from 0`);
+            if (typeof event.time !== 'number' || !Number.isSafeInteger(event.time)) shapeViolations.push(`seed[${index}] (${mode}): bad time`);
+            if (event.data === undefined) shapeViolations.push(`seed[${index}] (${mode}): data undefined`);
+            const role = MESSAGE_ROLE_BY_TYPE[event.type];
+            if (!role) return;
+            const message = event.type === 'user/message' ? event.data : event.data?.message;
+            if (typeof message?.id !== 'string' || message.id === '') shapeViolations.push(`seed[${index}] (${mode}, ${event.type}): lacks an identified message`);
+            else if (message.role !== role) shapeViolations.push(`seed[${index}] (${mode}, ${event.type}): role must be "${role}"`);
+            else if (typeof message.source?.kind !== 'string' || message.source.kind === '') shapeViolations.push(`seed[${index}] (${mode}, ${event.type}): invalid source`);
+            else if (!Array.isArray(message.content)) shapeViolations.push(`seed[${index}] (${mode}, ${event.type}): invalid content`);
+          });
+        }
+        if (shapeViolations.length) {
+          fail('seed message shape', new Error(`${shapeViolations.length} violation(s): ${shapeViolations.slice(0, 5).join('; ')}`));
+        } else {
+          ok(`seeds built from ${fixture.split('/').pop()} (both modes) pass the message-shape contract`);
+        }
+      } catch (err) {
+        fail('seed build + message shape', err);
+      }
+    }
   }
 }
 
@@ -177,7 +235,7 @@ console.log('5. inject contract (no optional services)');
 // ── 6. syntax + unit tests ──
 console.log('6. syntax + unit tests');
 {
-  const files = ['index.js', 'events.js', 'scaffold.js', 'rewind.js', 'tool.js', 'command.js', 'tui-rewind.js', 'errors.js'];
+  const files = ['index.js', 'events.js', 'scaffold.js', 'seed.js', 'rewind.js', 'tool.js', 'command.js', 'tui-rewind.js', 'errors.js'];
   for (const file of files) {
     const r = spawnSync('node', ['--check', join(REPO, 'lib', file)], { encoding: 'utf8' });
     if (r.status === 0) ok(`node --check lib/${file}`);

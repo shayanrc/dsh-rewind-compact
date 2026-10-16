@@ -192,4 +192,23 @@ verified on a green boot (log shows `[rewind-compact] entry loaded`):
 3. **`pnpm add file:` does not re-copy changed files** ("Already up to
    date"). Refresh the profile's copy with remove + add:
    `dsh plugin --profile <name> remove dsh-rewind-compact && dsh plugin --profile <name> add --offline file:<repo>`.
+4. **The fork seed used the assistant message shape.** The summary record was
+   built as `data.message.{role,content}` — the shape `assistant/message`
+   uses — with a bare string for content and no `id`, so every fork died in
+   the seed validator with `seed user/message at index 0 lacks an identified
+   message`. A `user/message`'s `data` object **is** the message: `id`,
+   `role: "user"`, `source.kind`, and `content` as blocks. The fork path had
+   not been re-run since the refactor that introduced this, and the unit tests
+   covered only `scaffold.js`/`events.js`. Seed composition now lives in the
+   pure `lib/seed.js`, `tests/seed.test.js` pins the envelope, and
+   `scripts/check-contracts.mjs` builds a seed from a real transcript.
+   The same trial showed the in-place compact path reporting `ok: true` for a
+   no-op on a profile with no compaction service; it now returns
+   `applied: false` plus a `note`, which the rendered output surfaces.
+   Reading the validator also turned up the same defect one layer down:
+   `session.append()` neither assigns nor requires a message `id`, so the two
+   append sites wrote a summary that stayed valid in the transcript but failed
+   the *next* fork with `session event at seq N lacks an identified message`.
+   Both sites now append the shared `summaryMessage()` payload, which carries
+   its own id.
 

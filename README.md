@@ -31,6 +31,7 @@ Headless/sdk: the tool's compact path works ungated; the rewind path fails close
 ## v1 limitations
 
 - No file revert: the plugin reports which files changed after the boundary but never restores them (deferred v2).
+- Profiles without a compaction service: the in-place compact path is a no-op and reports `applied: false` with a `note` (the fork path still summarizes, scaffold-only).
 - Headless/sdk approval for rewind fails closed.
 - Forked-session title `<original> (rewound)` is passed as a create option; builds whose agent factory ignores it keep the default title (logged).
 - The forked child session is stored under the `_no-cwd` session bucket instead of the source's workspace bucket (the TUI attaches the fork to the workspace in a separate step this bundle does not call yet); the child is complete and resumable, just ungrouped in the sidebar.
@@ -51,8 +52,8 @@ Headless/sdk: the tool's compact path works ungated; the rewind path fails close
 
 - package.json — bundle manifest
 - cordis.patch.yml — patch layer
-- lib/ — implementation (index.js entry; events.js accessors; scaffold.js, rewind.js, tool.js, command.js, errors.js)
-- tests/ — node:test unit tests (scaffold)
+- lib/ — implementation (index.js entry; events.js accessors; scaffold.js, seed.js, rewind.js, tool.js, command.js, tui-rewind.js, errors.js)
+- tests/ — node:test unit tests (scaffold, seed envelopes)
 - skill/rewind-compact/SKILL.md — the skill
 - SPEC.md — the approved spec
 
