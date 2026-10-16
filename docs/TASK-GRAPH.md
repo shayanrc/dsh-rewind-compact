@@ -25,8 +25,8 @@ graph is [`docs/task_dependencies.mmd`](task_dependencies.mmd).
 |---|---|---|
 | **D1** | E2E gate scope | **B — risk-tiered.** Web E2E *where applicable*; the TUI rig is **human-gated** (never an agent task); an environmental E2E failure degrades to `npm run check` + boot smoke with the gap recorded. B(i) yes — RC-08a still gets a browser smoke. |
 | **D2** | RC-08a: offline probe or live harness? | **A + (i)+(iii).** Offline tooling only (`scripts/inspect-fork.mjs` + a tail-replay helper); the pin derives the allowed option keys from the installed harness's `CreateAgentOptions` declaration **and** names the five concrete facts in its failure messages. No live capture — the tier-1 E2E rigs already boot. |
-| D3 | Two graphs: merge into `task_dependencies.mmd`, or keep separate and commit? | open |
-| D4 | How to verify r2 while it is uncommitted? | open |
+| **D3** | Two graphs: merge or keep separate, and commit? | **A.** Keep both — `TASK-GRAPH.md` is the remediation subgraph, `task_dependencies.mmd` the project graph — cross-linked. `TASK-GRAPH.md` is committed **path-scoped** (`git add docs/TASK-GRAPH.md`) so r2's uncommitted files are never staged. The reverse link into the `.mmd` waits until r2 lands, since editing it now would mix with r2's uncommitted edits. |
+| **D4** | How to verify r2 while it is uncommitted? | **A.** r2 commits first; then **RC-03v** verifies that commit in its own worktree, exactly like every other node. No verifying a half-finished working tree. |
 
 ## Node schema
 
@@ -104,12 +104,13 @@ node merging those branches must rebase onto whatever r2 lands as.
 | RC-04 | P0 | TUI "compact before" drops user turns and never compacts the prefix | `lib/tui-rewind.js` | — | **fixing** — `d32a91b` REJECTED; f1 landed `f501c29`, verifying on `rc/04-f1-verify` |
 | RC-04h | P3 | Idempotency: skip composing a child that already holds a rewind-compact summary | `lib/tui-rewind.js` | RC-04 | proposed (reviewer followup `f4`) |
 | RC-06 | P2 | Out-of-range turn numbers silently clamp to the newest turn | `lib/events.js` | — | **merging** — fix `df63714`, verify `afd70df`, review `6191c63`, e2e `656b389` PASSED |
-| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` (or docs, if the contract cannot be declared) | — | ready |
+| RC-11 | P2 | `/rewind-compact <turn> [after\|before]` args are never dispatched by the web client | `lib/command.js` | — | fixing (dispatched) — fix: declare `input: { hint }` |
 | RC-06h | P3 | Hardening: accept only canonical decimal integers as a rewind point | `lib/events.js` | RC-06 | proposed (reviewer judged it out of scope for RC-06) |
 | RC-08a | P1 | Fork-artifact inspector + tail-replay assertion helper (offline only, per D2) | `scripts/inspect-fork.mjs`, `scripts/replay-check.mjs`, `tests/` | — | fixing (dispatched) |
 | RC-08b | P1 | Pin `CreateAgentOptions`: harness-declaration subset **plus** named fact assertions (per D2) | `scripts/check-contracts.mjs` | r2 (external) | blocked |
 | RC-01 | P1 | Fork create-options use the TUI adapter's input names, not the real contract | `lib/rewind.js` | RC-08b | blocked |
 | RC-03 | P1 | In-place before-mode: scaffold outside the range, false `hybrid: true` | `lib/tool.js` | — | superseded by external r2 (fix uncommitted, unreviewed) |
+| RC-03v | P1 | Verify r2's committed before-mode change (`f6` re-check included) | `lib/tool.js` | r2 (external) | blocked until r2 commits |
 | RC-05 | P2 | Fork summaries are never hybrid: implement child-side summarization or downgrade the claim | `SPEC.md` §R5, `README.md` | RC-01, RC-02, RC-03, RC-04 | blocked |
 | RC-02 | P3 | Forked-session title is not a create option and is never applied | `lib/rewind.js` (docs on the doc-only branch) | RC-01 | blocked |
 | RC-07 | P3 | Gating error says "requires approval"; it is a presence check and root-agent-only | `lib/tool.js` | RC-03 | blocked |
@@ -299,8 +300,17 @@ Consequences for every E2E task:
   model, `1` means the command was dispatched. Stock bare `/rewind-compact` → `1`.
 - `lib/command.js`'s argument fast path is therefore **unreachable from the web UI**.
   It is exercised in the TUI (where args do dispatch), or indirectly through the tool.
-  Tracked as **RC-11**; `TESTING.md`'s web instruction to type `/rewind-compact 3 after`
-  is wrong and is an RC-09 item.
+  Tracked as **RC-11**. The seam **does** support a fix: `dsh-commands` validates
+  `input: { hint: string, attachments?: boolean }` (`dsh-commands/lib/index.js:147-153`)
+  and the web client claims the whole line when `desc.input !== undefined`
+  (`dsh-client-ui-commands` `matchEnter`). Declaring
+  `input: { hint: '[turn] [after|before]' }` makes the documented fast path real, so
+  `TESTING.md`'s instruction becomes *correct* rather than needing a correction.
+- **Checklist interaction:** once RC-11 lands, an arg-bearing line dispatches as a
+  **command**, so the capitalised `Unknown turn` becomes the right assertion for
+  `/rewind-compact 99 after` and the lowercase tool string no longer applies. RC-06e's
+  evidence stays valid for its own commit (taken before RC-11); the shared checklist and
+  the driver template must accept the post-RC-11 surface.
 
 ### What an E2E pass must produce (committed as `docs/e2e/RC-<n>.md`)
 
@@ -595,3 +605,41 @@ installed declaration and assert the plugin's create-call keys are a subset, and
 Take an existing child log, run the inspector, and compare against the header read by
 hand with `unzstd -c`. Then revert one field in a scratch copy and confirm RC-08b's
 probe fails.
+
+---
+
+## RC-11 — the web client never dispatches command arguments
+
+**Priority** P2 · **Status** fixing ·
+**Files** `lib/command.js`, `tests/command-registration.test.js`
+
+### Finding (from RC-06e)
+
+`dsh-client-ui-commands`'s `matchEnter` dispatches a command only for a **bare**
+`/name` token; a non-bare line falls through (`if (!bare) return void 0`) unless the
+command declares an `input` contract. `lib/command.js` declared none, so
+`/rewind-compact 3 after` was submitted as an ordinary prompt — the documented fast path
+was unreachable in the web UI, and the argument path only ever ran because the model
+called the `rewind_compact` tool instead.
+
+### Fix
+
+Declare `input: { hint: '[turn] [after|before]' }` in `ctx.commands.register({...})`,
+mirroring `dsh-command-feedback` (`lib/index.js:167`). The seam validates `input.hint`
+as a non-empty string and `input.attachments` as an optional boolean
+(`dsh-commands/lib/index.js:147-153`), and the client then claims the whole line
+(`desc.input !== undefined` → `leadingClaim`).
+
+### Acceptance
+
+`/rewind-compact 3 after` in the web UI produces `command/run = 1` in the transcript
+while a bare `/rewind-compact` still opens the picker, and the fast-path error string
+`Unknown turn` becomes reachable. Tests: a registration test asserting the definition's
+`input.hint` is a non-empty string, plus the unchanged handler behaviour.
+
+### E2E (tier 1, web)
+
+Type an arg-bearing command, assert `command/run = 1` and the completion message;
+`scripts/e2e-web-rc06.py` (on `rc/06-e2e`) is the driver template. Note the checklist
+interaction recorded above: after this lands, the capitalised `Unknown turn` is the
+correct assertion for an out-of-range point.
