@@ -10,6 +10,15 @@ PROFILE="${1:-dsh-tui}"
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 TMPDIR="${TMPDIR:-/tmp}"   # scratch: composed-config dump
 
+# Guardrail: run the repo's full check (contract probe + syntax + tests) from
+# the repo root BEFORE touching any profile, and abort on failure so a broken
+# bundle is never reloaded into a live profile.
+if ! (cd "$REPO" && npm run check); then
+  echo "guardrail failed: npm run check" >&2
+  echo "hint: fix the failures in $REPO, then re-run scripts/reload-profile.sh; no profile was touched." >&2
+  exit 1
+fi
+
 echo "== reload $PROFILE =="
 dsh plugin --profile "$PROFILE" remove dsh-rewind-compact 2>/dev/null || true
 dsh plugin --profile "$PROFILE" add --offline "file:$REPO"

@@ -41,4 +41,10 @@ All four surfaces register in `lib/index.js` (`apply` → one `ctx.effect`); edi
 - Post-v1: a failed `tui/rewind-done` scaffold append must return a non-empty error toast naming the prefix-only child and the intact source. Returning `undefined` lets the TUI's own success toast stand over a child that lacks its summary.
 - Transcripts carry two shapes (agent-session, surface/child-seed); go through the `events.js` accessors rather than reading `data` fields directly.
 
-Delegation pattern for this environment: delegate **read-and-report research** or **content-dictated file writes** (micro-scoped); avoid open-ended implementer briefs — code-generating subagents stall on long generations here.
+## Delegating to subagents
+
+- Delegate read-and-report research, or content-dictated writes (the prompt gives exact file contents) — micro-scoped, per-file. Never open-ended implementation: code-generating subagents hang ~10 min/generation with zero writes.
+- Mandate write-first: files on disk before any study; cap reading ("SPEC.md + at most 3 greps").
+- Stall recovery: interrupt, then re-arm with a single-file scope ("implement ONLY lib/X.js, then report") — one follow-up at a time.
+- Stall forensics: transcript at `$DSH_HOME/sessions/<workspace-dir>/<agent-id>/session.v3.jsonl.zstd` (`unzstd -c`); frozen at a trailing `step/start`, no new events ~10 min = hung generation.
+- Subagents share no conversation context — prompts must be self-contained.
