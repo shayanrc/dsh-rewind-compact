@@ -1,6 +1,6 @@
 ---
 name: testing-rewind-compact
-description: How to test this bundle for real — refresh the profile, drive the web E2E or the TUI picker, and recognise a pass. Use when verifying a change to the plugin, reproducing a fork/compact failure, or installing the bundle into a profile.
+description: How to test this bundle for real — refresh the profile, drive the web E2E or the TUI command, and recognise a pass. Use when verifying a change to the plugin, reproducing a fork/compact failure, or installing the bundle into a profile.
 ---
 
 # Testing rewind-compact
@@ -14,10 +14,10 @@ Two rigs (web, TUI), one gate. Behavioural invariants and code gotchas live in
 npm run check        # contract probe + syntax + node --test
 ```
 
-Its first two checks import the bundle **installed in a profile**
-(`$DSH_HOME/profiles/<p>/node_modules/dsh-rewind-compact`), so they validate a
-stale copy until you refresh one (§1). `tests/` and the seed check run from the
-repo.
+The probe resolves harness packages from `$DSH_HOME/profiles/node_modules`
+but imports `lib/` from **this checkout**, so code edits change the result
+without refreshing a profile. A live profile/TUI still runs the installed copy;
+refresh it before booting (§1). `tests/` and the seed check run from the repo.
 
 ## 1. Refresh the installed copy — pnpm will not do it for you
 
@@ -66,7 +66,7 @@ Three UI gates the script does not clear on a current build:
 Headless only in a sandboxed session: the full chromium build traps
 (`core dumped`); the `chromium_headless_shell` binary is what runs.
 
-## 3. TUI rig
+## 3. TUI rig (command; picker descoped)
 
 Esc-Esc modes need the grant, already present in
 `~/.dsh-tui/extension-grants.json`:
@@ -75,12 +75,11 @@ Esc-Esc modes need the grant, already present in
 {"grants": {"dsh-rewind-compact": [{"name": "session.rewind.intercept", "scope": "decision event subscription"}]}}
 ```
 
-- Two or three turns → **Esc Esc** on empty input → the confirm pane lists the
-  built-in rewind plus **Rewind + compact after / before** (a no-op side is
-  omitted) → pick → the TUI forks and a toast names the child.
+- **Picker descoped for v1 (RWC-018):** the Esc-Esc pane does not show the plugin mode; a backend bundle cannot register in the TUI host `DecisionEvents` registry. Use the command below. The picker steps are the post-v1 target.
 - Fast path — the one that exercises `lib/rewind.js`'s seed:
-  `/rewind-compact 3 before`.
-- Tool path: `rewind_compact` with `rewind: false` compacts in place (ungated);
+  `/rewind-compact 3 before` (before mode stays on the command/tool).
+- Tool path: `rewind: false` is **retired** in v1 (returns `ok:false`,
+  `applied:false`, `reason:"in_place_retired"`, no transcript write);
   `rewind: true` forks and requires a turn the human typed.
 
 ## 4. Scratch-home rig (when `~/.dsh` must stay untouched)
@@ -115,25 +114,30 @@ UI completion message: `Rewound to turn N (<mode> mode). New session: <uuid>.
 Pre-rewind session <id> keeps the discarded side and stays resumable. K file(s)
 changed since this point — files were NOT reverted (v1).`
 
-Child transcript (`$DSH_HOME/sessions/_no-cwd/<uuid>/session.v3.jsonl.zstd`):
+Child transcript (`$DSH_HOME/sessions/<normalized-cwd>/<uuid>/session.v4.jsonl.zstd`
+for the default zstd profile; `session.v4.jsonl` when persisted raw). The
+workspace bucket is the source cwd, never `_no-cwd`:
 
 ```
-seq 0  user/message       id=<uuid>  src=plugin  op=append   ← five-field scaffold
-seq 1  user/message       id=…       src=user    op=append   ← kept side, verbatim
-seq 2  assistant/message  id=…
-seq 3  session/end-seed
+header  {version:4, cwd, parentSession, isSeeded:true, agentPreset?}
+seq 0   user/message       src=user             op=append   ← kept prefix
+seq 1   assistant/message  src=model            op=append
+seq N   user/message       src=rewind-compact   op=append   ← five-field scaffold (last)
+seq N+1 session/end-seed
 ```
 
 Failure signatures: `seed user/message at index 0 lacks an identified message`
 (summary envelope wrong); `session event at seq N lacks an identified message`
-(an appended summary carried no `id`); `applied: false` with `ok: true` (no
-compaction service — expected in these profiles, which ship none).
+(an appended summary carried no `id`); `reason:"in_place_retired"` with
+`ok:false`/`applied:false` (the only v1 result of `rewind:false`); a TUI
+append failure must return an error toast naming the prefix-only child, never
+`undefined` or a success toast.
 
 ## 6. Forensics
 
 Sessions live at
-`$DSH_HOME/sessions/<normalized-cwd>/<session-id>/session.v3.jsonl.zstd` (read with
-`unzstd -c`). Helpers in `scripts/`:
+`$DSH_HOME/sessions/<normalized-cwd>/<session-id>/session.v4.jsonl.zstd` (read
+with `unzstd -c`); raw profiles use `session.v4.jsonl`. Helpers in `scripts/`:
 
 ```sh
 unzstd -c <session> | python3 scripts/seg.py <lo> <hi>          # one seq range
@@ -146,7 +150,8 @@ unzstd -c <child>   | python3 scripts/dumpchild.py              # seed shape + s
 
 - `--port` must be free: a stale app on 8124 fails the boot with
   `EADDRINUSE` inside the profile tree.
-- The forked child lands in the `_no-cwd` bucket, so it shows ungrouped in the
-  sidebar — expected (v1).
+- The forked child is written under the source workspace bucket
+  (`meta.cwd`), not `_no-cwd`; `scripts/check-create-jsonl.mjs` asserts this
+  through the real JSONL backend.
 - Never `pkill -f "dsh --profile …"` from a script whose own command line
   contains that string: it kills the script. Use a bracket pattern.
