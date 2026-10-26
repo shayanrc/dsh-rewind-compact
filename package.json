@@ -5,6 +5,14 @@
   "license": "LGPL-3.0-or-later",
   "type": "module",
   "main": "lib/index.js",
+  "files": [
+    "lib/",
+    "skill/",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "COPYING"
+  ],
   "scripts": {
     "test": "node --test tests/",
     "check": "node scripts/check-contracts.mjs --profile ${DSH_PROFILE:-dsh-tui}"
@@ -16,8 +24,7 @@
   "peerDependencies": {
     "@deepseek-ai/dsh-llm": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-session": ">=0.2.1-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "dsh": {
     "bundle": {
