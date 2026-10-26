@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   listTurnBoundaries, isNoOp, forkBoundarySeq, modeRange, filesChangedSince, boundaryForPoint,
   parseRewindMode, recordCallId, toolArguments, toolResultText,
+  SURFACE_TYPES, POLICY_FACT_TYPES, KEPT_LOG_TYPES, seedSourceEvents, foldSurfaceRecords,
+  sourceTitle, sourceAgentPreset, sourceCwd, sourceSessionId,
 } from '../lib/events.js';
 import { buildScaffold } from '../lib/scaffold.js';
 
@@ -118,3 +120,54 @@ test('nested-summary note and decisions/TODOs from message text', () => {
   assert.ok(out.match(/Outstanding TODOs[\s\S]*TODO: wire the picker/i));
   assert.ok(out.includes('includes a prior compact summary'));
 });
+
+test('the surface vocabulary includes developer/message and the policy/kept-log facts', () => {
+  assert.deepEqual([...SURFACE_TYPES].sort(), [
+    'assistant/message', 'developer/message', 'system/message', 'tool/result', 'user/message',
+  ]);
+  assert.deepEqual([...POLICY_FACT_TYPES].sort(), [
+    'approval/policy', 'permission/preset', 'plan/mode', 'sandbox/mode',
+  ]);
+  assert.ok(KEPT_LOG_TYPES.has('turn/start'));
+  assert.ok(KEPT_LOG_TYPES.has('turn/end'));
+  assert.ok(KEPT_LOG_TYPES.has('agent-preset/selected'));
+});
+
+test('seedSourceEvents drops the transcript header line and sorts by seq', () => {
+  const events = [
+    { type: 'session', version: 4, id: 's1', cwd: '/w' },
+    { type: 'turn/end', seq: 1, time: 2, data: { turn: 1 } },
+    { type: 'turn/start', seq: 0, time: 1, data: { turn: 1 } },
+    { type: 'torn', seq: undefined },
+  ];
+  assert.deepEqual(seedSourceEvents(events).map((event) => event.seq), [0, 1]);
+});
+
+test('foldSurfaceRecords applies replacements and drops the shadowed originals', () => {
+  const events = [
+    { type: 'user/message', seq: 0, time: 1, surfaceOp: 'append', data: { id: 'original', role: 'user', content: [], source: { kind: 'user' } } },
+    { type: 'assistant/message', seq: 1, time: 2, surfaceOp: 'append', data: { turn: 1, step: 1, stream: [], message: { id: 'a1', role: 'assistant', content: [], source: { kind: 'model', provider: 'p', model: 'm' } } } },
+    { type: 'user/message', seq: 2, time: 3, surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 }, sourceEventSeqs: [0], data: { id: 'replacement', role: 'user', content: [], source: { kind: 'compact-checkpoint', compactionId: 'c' } } },
+  ];
+  assert.deepEqual(foldSurfaceRecords(events).map((event) => event.data.id ?? event.data.message?.id), ['replacement', 'a1']);
+});
+
+test('source accessors fold title, preset, cwd and session id from their real homes', () => {
+  const events = [
+    { type: 'session', version: 4, id: 'header-session', cwd: '/header/cwd' },
+    { type: 'session/title', seq: 0, time: 1, data: { title: 'Older title', messageSeqs: [], source: { kind: 'fallback' } } },
+    { type: 'session/title', seq: 1, time: 2, data: { title: 'Latest title', messageSeqs: [], source: { kind: 'user' } } },
+    { type: 'agent-preset/selected', seq: 2, time: 3, data: { agentPreset: 'reviewer' } },
+  ];
+  assert.equal(sourceTitle(events), 'Latest title');
+  assert.equal(sourceTitle([]), undefined);
+  assert.equal(sourceCwd({}, events), '/header/cwd');
+  assert.equal(sourceCwd({ header: { cwd: '/live' } }, events), '/live');
+  assert.equal(sourceCwd({}, []), undefined);
+  assert.equal(sourceSessionId({}, events), 'header-session');
+  assert.equal(sourceSessionId({ id: 'live-session' }, events), 'live-session');
+  assert.equal(sourceAgentPreset({ header: { agentPreset: 'standard' } }, events), 'reviewer');
+  assert.equal(sourceAgentPreset({}, []), undefined);
+  assert.equal(sourceAgentPreset({ header: { agentPreset: 'standard' } }, []), 'standard');
+});
+

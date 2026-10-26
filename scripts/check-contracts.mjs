@@ -67,7 +67,7 @@ const manifest = JSON.parse(readFileSync(join(REPO, 'package.json'), 'utf8'));
 const DECLARED_RANGE = manifest.engines?.dsh;
 
 const LIB_FILES = [
-  'index.js', 'events.js', 'scaffold.js', 'seed.js', 'rewind.js',
+  'index.js', 'events.js', 'scaffold.js', 'seed.js', 'create.js', 'rewind.js',
   'tool.js', 'command.js', 'tui-rewind.js', 'errors.js',
 ];
 
@@ -347,6 +347,23 @@ console.log('3. harness surface facts (Session v4 / createAgent / compactRegion)
   }
 
   try {
+    // The worktree keeps a local surface-type set (pure modules, no harness
+    // import in `npm test`); this asserts it matches the harness vocabulary —
+    // developer/message included (RWC-003).
+    const { isSurfaceEligibleType } = await import('@deepseek-ai/dsh-session');
+    const { SURFACE_TYPES: localSurfaceTypes } = await import(pathToFileURL(join(REPO, 'lib', 'events.js')).href);
+    const vocabulary = ['system/message', 'developer/message', 'user/message', 'assistant/message', 'tool/result'];
+    const mismatched = vocabulary.filter((type) => isSurfaceEligibleType(type) !== localSurfaceTypes.has(type));
+    if (mismatched.length === 0 && localSurfaceTypes.size === vocabulary.length) {
+      ok(`surface vocabulary matches isSurfaceEligibleType (${vocabulary.length} types incl. developer/message)`);
+    } else {
+      fail('surface vocabulary', new Error(`local SURFACE_TYPES diverges on: ${mismatched.join(', ') || '(extra types)'}`));
+    }
+  } catch (err) {
+    fail('surface vocabulary', err);
+  }
+
+  try {
     const agentTypes = readFileSync(
       harnessFile('@deepseek-ai', 'dsh-agent', 'lib', 'types', 'index.d.ts'), 'utf8',
     );
@@ -399,39 +416,67 @@ console.log('3. harness surface facts (Session v4 / createAgent / compactRegion)
   }
 
   try {
-    // Static audit of the fork call site: 0.2.1 CreateAgentOptions carries
-    // parent lineage/cwd/isSeeded under `meta` and the inherited length as
-    // `inheritedEventCount`; the agent factory reads only those keys
-    // (dsh-agent-loop/lib/index.js:1893-1904).
+    // The fork call site must go through buildCreateOptions: 0.2.1
+    // CreateAgentOptions carries parent lineage/cwd/isSeeded under `meta` and
+    // the inherited length as `inheritedEventCount`; the factory reads only
+    // those keys (dsh-agent-loop/lib/index.js:1893-1904) and silently ignores
+    // the pre-0.2.1 top-level aliases.
     const loop = readFileSync(harnessFile('@deepseek-ai', 'dsh-agent-loop', 'lib', 'index.js'), 'utf8');
     const factoryReadsMeta = /options\.meta/.test(loop);
     const factoryReadsInherited = /options\.inheritedEventCount/.test(loop);
     const rewind = readFileSync(join(REPO, 'lib', 'rewind.js'), 'utf8');
-    const block = /ctx\.agents\.create\(\{([\s\S]*?)\n  \}\);/.exec(rewind)?.[1];
-    if (block === undefined) throw new Error('lib/rewind.js has no ctx.agents.create({...}) call to audit');
-    const currentKeys = new Set(['sessionId', 'parentAgent', 'meta', 'inheritedEventCount', 'seed', 'agentOptions', 'signal', 'setup']);
-    const legacyKeys = { inheritedCount: 'meta.isSeeded: true + inheritedEventCount', parentSession: 'meta.parentSession', cwd: 'meta.cwd', title: 'not a CreateAgentOptions field' };
-    const direct = [...block.matchAll(/^\s{4}([A-Za-z_$][\w$]*)\s*[:,]/gm)].map((match) => match[1]);
-    const spread = [...block.matchAll(/\{\s*([A-Za-z_$][\w$]*)\s*\}/g)].map((match) => match[1]);
-    const used = new Set([...direct, ...spread]);
-    const unknown = [...used].filter((key) => !currentKeys.has(key) && !(key in legacyKeys));
-    const legacy = Object.keys(legacyKeys).filter((key) => used.has(key));
-    const missing = ['sessionId', 'seed'].filter((key) => !used.has(key));
-    if (unknown.length > 0) {
-      fail('create call keys', new Error(`unknown keys ${unknown.join(', ')} — not CreateAgentOptions and not known legacy aliases`));
-    } else if (missing.length > 0) {
-      fail('create call keys', new Error(`missing ${missing.join(', ')}`));
+    if (!/ctx\.agents\.create\(buildCreateOptions\(/.test(rewind)) {
+      throw new Error('lib/rewind.js must call ctx.agents.create(buildCreateOptions({...})) so the options are auditable');
+    }
+    const { buildCreateOptions } = await import(pathToFileURL(join(REPO, 'lib', 'create.js')).href);
+    const probeSeed = [{
+      type: 'user/message', seq: 0, time: 1, surfaceOp: 'append',
+      data: { id: 'probe-seed', role: 'user', content: [{ type: 'text', text: 'seed' }], source: { kind: 'rewind-compact' } },
+    }];
+    const options = buildCreateOptions({
+      source: { id: 'probe-source' },
+      sessionId: 'probe-child',
+      seed: probeSeed,
+      cwd: REPO,
+      title: 'Probe source title',
+      agentPreset: 'standard',
+    });
+    const legacyKeys = ['inheritedCount', 'parentSession', 'cwd', 'title'];
+    const legacy = legacyKeys.filter((key) => Object.hasOwn(options, key));
+    const unknown = Object.keys(options).filter((key) => !['sessionId', 'seed', 'meta', 'inheritedEventCount', 'setup'].includes(key));
+    const metaKeys = Object.keys(options.meta).sort();
+    const badMeta = !options.meta.isSeeded
+      || options.meta.cwd !== REPO
+      || options.meta.parentSession !== 'probe-source'
+      || options.meta.agentPreset !== 'standard';
+    if (legacy.length > 0) {
+      fail('create call keys', new Error(`ignored 0.2.1 top-level alias(es): ${legacy.join(', ')}`));
+    } else if (unknown.length > 0) {
+      fail('create call keys', new Error(`unknown options ${unknown.join(', ')} — not in CreateAgentOptions`));
+    } else if (options.inheritedEventCount !== probeSeed.length) {
+      fail('create call keys', new Error(`inheritedEventCount ${options.inheritedEventCount} !== seed length ${probeSeed.length}`));
+    } else if (badMeta || metaKeys.join(',') !== 'agentPreset,cwd,isSeeded,parentSession') {
+      fail('create meta', new Error(`unexpected meta ${JSON.stringify(options.meta)}`));
     } else if (!factoryReadsMeta || !factoryReadsInherited) {
       fail('factory option consumption', new Error(`factory reads meta=${factoryReadsMeta} inheritedEventCount=${factoryReadsInherited}`));
+    } else if (typeof options.setup !== 'function') {
+      fail('create setup', new Error('setup must clear the child inbox and append the title event'));
     } else {
-      ok('create call passes sessionId + seed; factory consumes meta + inheritedEventCount');
-      if (legacy.length > 0) {
-        deviation(
-          `fork create call still uses legacy option(s): ${legacy.join(', ')}`,
-          `0.2.1 ignores them (the factory reads meta/inheritedEventCount), so the child forks without lineage/cwd metadata. ` +
-          `Replace with ${legacy.map((key) => `${key} -> ${legacyKeys[key]}`).join('; ')}.`,
-        );
-      }
+      // Exercise the title seam exactly as the factory will: a
+      // `session/title` event, not a create option.
+      const appended = [];
+      let cleared = 0;
+      await options.setup({}, {
+        inbox: { clear: () => { cleared += 1; } },
+        session: { append: (type, data) => { appended.push({ type, data }); } },
+      });
+      const titleEvent = appended.find((entry) => entry.type === 'session/title');
+      const titleOk = titleEvent?.data?.title === 'Probe source title (rewound)'
+        && Array.isArray(titleEvent.data.messageSeqs)
+        && titleEvent.data.source?.kind === 'user';
+      if (cleared !== 1) fail('create setup', new Error('setup must clear the child inbox'));
+      else if (!titleOk) fail('create title seam', new Error(`unexpected title append ${JSON.stringify(appended)}`));
+      else ok('create options = meta{cwd,parentSession,isSeeded,agentPreset} + inheritedEventCount; title appended as session/title');
     }
   } catch (err) {
     fail('create call shape', err);
@@ -547,10 +592,11 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
     fail('seed envelope', new Error(`${envelopeViolations.length} violation(s): ${envelopeViolations.slice(0, 5).join('; ')}`));
   }
 
-  // The summary payload every append/seed site shares (lib/seed.js).
+  // The summary payload every append/seed site shares (lib/seed.js) and the
+  // declared message-source kind it uses (RWC-009).
   let summaryKind;
   try {
-    const { summaryMessage } = await import(pathToFileURL(join(REPO, 'lib', 'seed.js')).href);
+    const { summaryMessage, SUMMARY_SOURCE_KIND } = await import(pathToFileURL(join(REPO, 'lib', 'seed.js')).href);
     const summary = summaryMessage('probe');
     if (typeof summary.id !== 'string' || summary.id === '') throw new Error('summaryMessage must carry an id');
     if (summary.role !== 'user' || !Array.isArray(summary.content)) {
@@ -560,17 +606,37 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
     if (typeof summaryKind !== 'string' || summaryKind === '') {
       throw new Error('summaryMessage source.kind must be a non-empty string');
     }
-    ok(`summary message carries id/role/content and source.kind="${summaryKind}"`);
     if (summaryKind === 'plugin' || Object.hasOwn(summary.source ?? {}, 'plugin')) {
-      deviation(
-        'summary source kind is the legacy {kind:"plugin", plugin} shape',
-        '0.2.1 MessageSourceMap has no catch-all "plugin" kind (module augmentation declares producer kinds). ' +
-        'The session validator accepts any non-empty user-source kind, so seeds load; consumers cannot interpret it.',
+      fail(
+        'summary source kind',
+        new Error(
+          'the retired {kind:"plugin", plugin} wrapper is not a 0.2.1 MessageSourceMap kind and is rejected at V4 admission; ' +
+          `declare and document a producer kind (expected "${SUMMARY_SOURCE_KIND}")`,
+        ),
       );
+    } else if (summaryKind !== SUMMARY_SOURCE_KIND) {
+      fail('summary source kind', new Error(`summary source.kind is "${summaryKind}", expected the declared kind "${SUMMARY_SOURCE_KIND}"`));
+    } else {
+      ok(`summary message carries id/role/content and the declared source.kind="${summaryKind}"`);
+      const declaration = readFileSync(join(REPO, 'lib', 'message-source.d.ts'), 'utf8');
+      const augments = /declare module '@deepseek-ai\/dsh-llm'/.test(declaration)
+        && new RegExp(`'${SUMMARY_SOURCE_KIND}'\\s*:\\s*\\{\\s*readonly kind:\\s*'${SUMMARY_SOURCE_KIND}'`).test(declaration);
+      if (augments) ok(`lib/message-source.d.ts declares MessageSourceMap['${SUMMARY_SOURCE_KIND}']`);
+      else fail('summary source declaration', new Error('lib/message-source.d.ts does not augment MessageSourceMap with the kind'));
+      const stale = ['lib', 'tests', 'scripts'].flatMap((dir) => {
+        const root = join(REPO, dir);
+        if (!existsSync(root)) return [];
+        return readdirSync(root, { recursive: true, withFileTypes: true })
+          .filter((entry) => entry.isFile() && /\.(?:js|mjs|ts)$/.test(entry.name))
+          .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
+      }).filter((file) => /\{\s*kind:\s*'plugin'/.test(readFileSync(file, 'utf8')));
+      if (stale.length === 0) ok('no {kind:"plugin"} wrapper remains in lib/tests/scripts');
+      else fail('retired plugin source kind', new Error(`still present in: ${stale.join(', ')}`));
     }
   } catch (err) {
     fail('summary message shape', err);
   }
+
 
   // Build both modes from the fixture and run the harness's own validator.
   let Session;
