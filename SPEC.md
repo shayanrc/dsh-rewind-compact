@@ -83,6 +83,8 @@ If a field has no data, the section is present and says so. If the compacted ran
 
 ### R6 — Picker rules
 
+**Implementation status (2026-10-27):** blocked by RWC-018 on dsh-tui 0.17.0. A profile bundle is a backend activation and cannot register in the TUI host `DecisionEvents` registry; the TUI command/tool ship, the picker waits for a native TUI plugin or a harness bridge. The rules below are the target.
+
 The interactive picker is the TUI's native rewind overlay (Esc Esc), which lists **user-message rows**. The bundle's `tui/rewind-prompt` answer realizes the designed rules:
 
 - the picked user-message row is mapped to its enclosing `turn/start`, and that turn must have ended. A row in the still-open turn is ineligible (no plugin modes; the built-in rewind remains) until that turn ends. There is no mid-turn point;

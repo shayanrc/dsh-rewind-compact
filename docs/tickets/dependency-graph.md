@@ -68,7 +68,8 @@ flowchart TB
   end
 
   subgraph w3["Wave 3 — release"]
-    t016["RWC-016<br/>fresh-profile verification<br/>P1 · in-progress"]:::progress
+    t018["RWC-018<br/>TUI DecisionEvents host gap<br/>P0 · blocked"]:::blocked
+    t016["RWC-016<br/>fresh-profile verification<br/>P1 · blocked"]:::blocked
   end
 
   %% hard prerequisites
@@ -111,6 +112,8 @@ flowchart TB
 
   t013 --> t016
   t014 --> t016
+  t015 --> t018
+  t018 --> t016
   t017 --> t016
 
   %% coordination / shared files (no precedence implied)
@@ -130,15 +133,16 @@ flowchart TB
   v4-only fixture gate, real `Session.create` for both modes, replacement and
   policy fixtures, the child-JSONL proof, the summary source/declaration, and
   the direct-human gate tests.
-- **Remaining:** RWC-016 release verification (scratch profile, dump/boot,
-  web/TUI live surfaces, uninstall, evidence). It is no longer blocked; it is
-  the only open ticket.
+- **Remaining:** RWC-016 release verification. The web/tool/command evidence is
+  green, but the real TUI picker does not show the plugin after mode. RWC-018
+  records the host DecisionEvents gap; RWC-016 is blocked on it.
 
 ## Agent queue (release)
 
 | Agent lane | Ticket | State |
 |---|---|---|
-| **main / release** | RWC-016 | in-progress |
+| **main / release** | RWC-016 | blocked on RWC-018 |
+| **decision** | RWC-018 | blocked; choose native plugin / bridge / descope |
 | **review/verify** | closed (RWC-017 done) | — |
 
 ## Completed lanes

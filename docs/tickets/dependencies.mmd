@@ -40,7 +40,8 @@ flowchart TB
   end
 
   subgraph w3["Wave 3 — release"]
-    t016["RWC-016<br/>fresh-profile verification<br/>P1 · in-progress"]:::progress
+    t018["RWC-018<br/>TUI DecisionEvents host gap<br/>P0 · blocked"]:::blocked
+    t016["RWC-016<br/>fresh-profile verification<br/>P1 · blocked"]:::blocked
   end
 
   %% hard prerequisites
@@ -83,6 +84,8 @@ flowchart TB
 
   t013 --> t016
   t014 --> t016
+  t015 --> t018
+  t018 --> t016
   t017 --> t016
 
   %% coordination / shared files (no precedence implied)

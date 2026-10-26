@@ -6,7 +6,7 @@
 - **Estimate:** M
 - **Owner:** unassigned
 - **Created:** 2026-10-27
-- **Depends on:** RWC-001, RWC-012, RWC-013, RWC-014; all P0/P1 code tickets closed
+- **Depends on:** RWC-001, RWC-012, RWC-013, RWC-014, RWC-018; all P0/P1 code tickets closed
 - **Blocks:** —
 - **Spec:** §6 verification, §7 hard constraints
 - **Review:** 2026-10-27 review, “Verification” gap
@@ -83,3 +83,20 @@ Expected: all checks pass; evidence recorded; live profile untouched.
   covers only the scaffold-only path on a profile without compaction.
 - The old `docs/task_dependencies.mmd` marks TUI verification done; the ticket
   graph supersedes it.
+
+## Release-run evidence (2026-10-27)
+
+Green:
+- Fresh browser E2E on a scratch web profile (`rwc-rel-web-1`): command path,
+  before mode, child `3eb2012f-2c7b-41ce-bf7e-1d05768c101e` with
+  `cwd`/`parentSession`/`isSeeded`/`agentPreset`, summary-first scaffold,
+  prefix policy baseline, `session/title` `(rewound)`, workspace bucket, source
+  resumable. Screenshots `70-q1.png`, `71-q2.png`, `72-result.png`.
+- `npm test` 81/81; `npm run check` ALL CONTRACTS PASS.
+- Scratch sdk-minimal dump/boot and scratch tarball install/dump.
+
+Blocked:
+- The real TUI Esc-Esc pane does not show the plugin after mode. See RWC-018:
+  the DSH bundle activation is not in the TUI host composition, and raw
+  `ctx.on` DecisionEvents are absent from the host registry. The picker handler
+  itself is unit-tested and correct; the host integration is missing.

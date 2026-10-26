@@ -70,8 +70,9 @@ dependencies, and verification. The review evidence is in
 | [RWC-013](RWC-013-test-probe-hardening.md) | Harden tests and contract probe | P1 | done | test | L | 001; final gate after the code fixes | §5, §6 |
 | [RWC-014](RWC-014-package-distribution.md) | Fix package/distribution metadata | P2 | done | chore | S | 001 (coord. 013) | R1 |
 | [RWC-015](RWC-015-spec-decisions.md) | Resolve spec ambiguities (ADR) | P0 | done | decision | M | — | R4–R7, R11, R12 |
-| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | in-progress | test | M | 001, 012, 013, 014; all P0/P1 code tickets | §6, §7 |
+| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | blocked | test | M | 001, 012, 013, 014, 018; all P0/P1 code tickets | §6, §7 |
 | [RWC-017](RWC-017-integrated-re-review-gate.md) | Independent integrated re-review + verify gate | P0 | done | test | M | 002–007, 009, 010, 012–015 | §5, §6 |
+| [RWC-018](RWC-018-tui-decision-event-host.md) | TUI picker host DecisionEvents integration | P0 | blocked | bug | L | 015 | R3.1, R6 |
 
 ## Traceability: review finding → ticket
 
