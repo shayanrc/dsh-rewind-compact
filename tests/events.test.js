@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  listTurnBoundaries, isNoOp, forkBoundarySeq, modeRange, filesChangedSince, boundaryForPoint,
-  parseRewindMode, recordCallId, toolArguments, toolResultText,
+  listTurnBoundaries, isNoOp, forkBoundarySeq, filesChangedSince, boundaryForPoint,
+  parseRewindMode, recordCallId, toolArguments, toolResultText, changedFiles, extractPaths,
 } from '../lib/events.js';
 import { buildScaffold } from '../lib/scaffold.js';
 
@@ -53,12 +53,6 @@ test('forkBoundarySeq cuts just before the enclosing turn/start', () => {
   assert.equal(forkBoundarySeq(events, 2), 0);
 });
 
-test('modeRange splits around the boundary', () => {
-  const events = transcript();
-  assert.deepEqual(modeRange(events, 3, 'after'), { start: 4, end: 9 });
-  assert.deepEqual(modeRange(events, 3, 'before'), { start: 0, end: 3 });
-});
-
 test('boundaryForPoint resolves an in-range 1-based turn, -1, and an exact id', () => {
   const boundaries = [{ seq: 1, turn: 1 }, { seq: 4, turn: 2 }, { seq: 7, turn: 3 }];
   assert.equal(boundaryForPoint(boundaries, '1').seq, 1);
@@ -87,13 +81,102 @@ test('parseRewindMode accepts only after/before and defaults when omitted', () =
   assert.equal(parseRewindMode(null), undefined);
 });
 
-test('filesChangedSince counts file-touching tools after the boundary', () => {
+test('filesChangedSince counts write/edit calls after the boundary', () => {
   const events = [
     msg('tool/call', 4, { callId: 'c1', name: 'write', arguments: { file_path: '/repo/a.js' } }),
     msg('tool/result', 5, { callId: 'c1', name: 'write', result: 'ok' }),
     msg('tool/call', 6, { callId: 'c2', name: 'read', arguments: { file_path: '/repo/b.js' } }),
   ];
-  assert.equal(filesChangedSince(events, 3), 1); // read is not a modifying tool
+  assert.equal(filesChangedSince(events, 3), 1); // read is not a change
+});
+
+test('research-only tools report zero changed files', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'r', name: 'read', arguments: { file_path: '/repo/a.js' } }),
+    msg('tool/call', 2, { callId: 'g', name: 'grep', arguments: { pattern: 'needle', path: '/repo' } }),
+    msg('tool/call', 3, { callId: 'gl', name: 'glob', arguments: { pattern: '**/*.js', path: '/repo' } }),
+    msg('tool/call', 4, { callId: 'wf', name: 'web_fetch', arguments: { url: 'https://example.com/a/v1.2.3' } }),
+    msg('tool/call', 5, { callId: 'ws', name: 'web_search', arguments: { queries: ['src/main.ts v20.11.1'] } }),
+  ];
+  assert.deepEqual(changedFiles(events), []);
+  assert.equal(filesChangedSince(events, 0), 0);
+});
+
+test('bash commands and their output never count as file changes', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'c', name: 'bash', arguments: { command: 'ls src/main.ts' } }),
+    msg('tool/result', 2, { callId: 'c', meta: { cwd: '/repo' }, message: { content: 'src/main.ts\npackage.json' } }),
+    msg('tool/call', 3, { callId: 's', name: 'bash', arguments: { command: 'git status --short' } }),
+    msg('tool/result', 4, { callId: 's', message: { content: ' M src/main.ts\n?? new-file.ts' } }),
+  ];
+  assert.deepEqual(changedFiles(events), []);
+});
+
+test('write/edit report exactly their structured paths, deduplicated', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'w1', name: 'write', arguments: { file_path: './src/a.js' } }),
+    msg('tool/result', 2, { callId: 'w1', meta: { path: '/repo/src/a.js' }, message: { content: 'Created file' } }),
+    msg('tool/call', 3, { callId: 'e1', name: 'edit', arguments: { file_path: 'src/b.js' } }),
+    msg('tool/result', 4, { callId: 'e1', meta: { path: '/repo/src/b.js', diffs: [{ path: '/repo/src/b.js' }] } }),
+    msg('tool/call', 5, { callId: 'w2', name: 'write', arguments: { file_path: '/repo/src/a.js' } }),
+    msg('tool/result', 6, { callId: 'w2', meta: { path: '/repo/src/a.js' } }),
+    msg('tool/call', 7, { callId: 'r', name: 'read', arguments: { file_path: '/repo/src/c.js' } }),
+  ];
+  assert.deepEqual(changedFiles(events), ['/repo/src/a.js', '/repo/src/b.js']);
+});
+
+test('string arguments and nested result.meta are supported', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'w', name: 'write', arguments: '{"file_path": "./src/a.ts"}' }),
+    msg('tool/result', 2, { callId: 'w', result: { meta: { path: '/repo/src/a.ts' } } }),
+  ];
+  assert.deepEqual(changedFiles(events), ['/repo/src/a.ts']);
+});
+
+test('a failed write/edit is not a file change', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'e1', name: 'edit', arguments: { file_path: '/repo/a.js' } }),
+    msg('tool/result', 2, {
+      callId: 'e1',
+      error: { name: 'FsError', code: 'FS_NOT_OBSERVED' },
+      message: { isError: true, content: 'Error: cannot modify file' },
+    }),
+  ];
+  assert.deepEqual(changedFiles(events), []);
+});
+
+test('URLs and version strings are never file changes', () => {
+  const events = [
+    msg('tool/call', 1, { callId: 'a', name: 'write', arguments: { file_path: 'https://example.com/a/v1.2.3' } }),
+    msg('tool/call', 2, { callId: 'b', name: 'edit', arguments: { file_path: 'v20.11.1' } }),
+    msg('tool/call', 3, { callId: 'c', name: 'write', arguments: { file_path: './src/main.ts' } }),
+  ];
+  assert.deepEqual(changedFiles(events), ['src/main.ts']);
+});
+
+test('extractPaths rejects URLs and version strings', () => {
+  assert.deepEqual(
+    extractPaths('https://example.com/a/v1.2.3 v20.11.1 src/main.ts'),
+    ['src/main.ts'],
+  );
+});
+
+test('picker warning count and scaffold Files changed agree', () => {
+  const events = [
+    turnStart(1, 1), userMsg(2, 'hello'), turnEnd(3, 1),
+    msg('tool/call', 4, { callId: 'w', name: 'write', arguments: { file_path: '/repo/a.js' } }),
+    msg('tool/result', 5, { callId: 'w', meta: { path: '/repo/a.js' } }),
+    msg('tool/call', 6, { callId: 'r', name: 'read', arguments: { file_path: '/repo/b.js' } }),
+    msg('tool/call', 7, { callId: 'e', name: 'edit', arguments: { file_path: '/repo/c.js' } }),
+    msg('tool/result', 8, { callId: 'e', meta: { path: '/repo/c.js' } }),
+  ];
+  const after = events.filter((event) => event.seq > 3);
+  const expected = changedFiles(after);
+  assert.deepEqual(expected, ['/repo/a.js', '/repo/c.js']);
+  assert.equal(filesChangedSince(events, 3), expected.length);
+  const scaffold = buildScaffold(after);
+  const section = /## Files changed\n([\s\S]*?)\n## /.exec(scaffold)?.[1] ?? '';
+  assert.deepEqual(section.split('\n').filter((line) => line.startsWith('- ')).map((line) => line.slice(2)), expected);
 });
 
 test('dual transcript shapes: string arguments and nested callId/result', () => {
