@@ -36,9 +36,14 @@ options, `compactRegion`) against **this checkout's** `lib/`; see
 | Surface | Where it works |
 |---|---|
 | Esc-Esc rewind picker modes | TUI profile (decision-event seam `tui/rewind-prompt` / `tui/rewind-done`; needs the `session.rewind.intercept` grant — see TESTING.md) |
-| `/rewind-compact` command | TUI profile (harness command seam, composed into every human-command adapter) |
+| `/rewind-compact` command | profiles providing the `commands` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |
 | `rewind_compact` tool | every profile that loads the bundle (model-invoked) |
-| `rewind-compact` skill | every profile that loads the bundle (model-invoked) |
+| `rewind-compact` skill | profiles providing the `skills` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |
+
+Only `tools` and `agents` are hard requirements. `sdk-minimal` deliberately
+ships neither `commands` nor `skills`, so there the bundle still loads and
+registers the tool (the TUI decision subscriptions are inert without a TUI),
+logging one skip line per absent surface.
 
 Headless/sdk: the tool's compact path works ungated; the rewind path fails closed (no direct human input in a goal-round turn).
 

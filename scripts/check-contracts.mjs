@@ -35,8 +35,12 @@
  *      seed preserves the source envelope and the child folds it. If no
  *      fixture exercises a replacement, a synthetic one is used for that
  *      check.
- *   7. inject contract: no optional service (compaction/logger) wedges
- *      activation on profiles without them.
+ *   7. surface/inject contract: only `tools`+`agents` are required;
+ *      `commands`/`skills` (and compaction/logger/sessionProjections) are
+ *      optional and probed. Drives the REAL entry `apply()` with a profile
+ *      double for sdk-minimal (no commands/skills) and a full profile, and
+ *      checks the tool always registers, skipped surfaces log exactly once,
+ *      and every surface yields a disposer from the single effect.
  *   8. syntax + unit tests: node --check on lib/*.js and node --test tests/.
  *
  * Failures are contract breaks. Deviations (printed with `!`) are real
@@ -68,7 +72,7 @@ const DECLARED_RANGE = manifest.engines?.dsh;
 
 const LIB_FILES = [
   'index.js', 'events.js', 'scaffold.js', 'seed.js', 'rewind.js',
-  'tool.js', 'command.js', 'tui-rewind.js', 'errors.js',
+  'tool.js', 'command.js', 'tui-rewind.js', 'surfaces.js', 'errors.js',
 ];
 
 // 0.2.1 surface vocabulary (dsh-session/lib/types/types.d.ts:443) and the
@@ -711,16 +715,113 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
   }
 }
 
-// ── 7. inject list must not require optional services ──────────────────────
-console.log('7. inject contract (no optional services)');
+// ── 7. surface contract: required inject only; optional surfaces probed ─────
+console.log('7. surface contract (commands/skills optional, tools/agents required)');
 {
   const source = readFileSync(join(REPO, 'lib', 'index.js'), 'utf8');
   const injectMatch = /const inject = \[(.*?)\];/s.exec(source);
   const inject = injectMatch ? injectMatch[1].match(/'([^']+)'/g).map((entry) => entry.replace(/'/g, '')) : [];
-  const optional = inject.filter((name) => ['compaction', 'logger', 'sessionProjections'].includes(name));
-  const required = ['tools', 'commands', 'skills', 'agents'].filter((name) => !inject.includes(name));
+  const optional = inject.filter((name) =>
+    ['commands', 'skills', 'compaction', 'logger', 'sessionProjections'].includes(name));
+  const required = ['tools', 'agents'].filter((name) => !inject.includes(name));
   if (optional.length === 0 && required.length === 0) ok(`inject = [${inject.join(', ')}]`);
   else fail('inject list', new Error(`optional services in inject: ${optional}; missing required: ${required}`));
+
+  // Profile double: a sdk-minimal-like tree provides no commands/skills;
+  // a base-backed profile provides both. `ctx.get()` throws for anything the
+  // profile does not provide, exactly like Cordis does for uninjected services.
+  const makeEntryCtx = (available) => {
+    const logs = [];
+    const registrations = { tools: [], commands: [], skills: [] };
+    const listeners = new Map();
+    const disposers = [];
+    const effectLabels = [];
+    const logger = { info: (line) => logs.push(line), warn: (line) => logs.push(line) };
+    const services = {
+      agents: {},
+      compaction: { compactRegion() {} },
+      commands: { register(definition) { registrations.commands.push(definition); return () => {}; } },
+      skills: { register(definition) { registrations.skills.push(definition); return () => {}; } },
+    };
+    const ctx = {
+      effect(execute, label) {
+        effectLabels.push(label);
+        const iterator = execute();
+        for (;;) {
+          const step = iterator.next();
+          if (step.done) return step.value;
+          disposers.push(step.value);
+        }
+      },
+      tools: { register(tool) { registrations.tools.push(tool); return () => {}; } },
+      on(name) { listeners.set(name, true); return () => listeners.delete(name); },
+      get(serviceName) {
+        if (serviceName === 'logger') return logger;
+        if (available.has(serviceName)) return services[serviceName];
+        throw new Error(`service "${serviceName}" is not provided by this profile`);
+      },
+    };
+    return { ctx, logs, registrations, listeners, disposers, effectLabels };
+  };
+
+  try {
+    const { apply } = await import(pathToFileURL(join(REPO, 'lib', 'index.js')).href);
+
+    // sdk-minimal: tools + agents + compaction, deliberately no commands/skills.
+    const minimal = makeEntryCtx(new Set(['agents', 'compaction']));
+    apply(minimal.ctx);
+    if (minimal.effectLabels.length === 1) ok('single effect for sdk-minimal-like profile');
+    else fail('entry effect count', new Error(`expected 1 effect, got ${minimal.effectLabels.length}`));
+    if (minimal.registrations.tools.length === 1) ok('rewind_compact tool still registers without commands/skills');
+    else fail('tool registration on sdk-minimal', new Error(`tool registrations: ${minimal.registrations.tools.length}`));
+    if (minimal.registrations.commands.length === 0 && minimal.registrations.skills.length === 0) {
+      ok('no command/skill surface registered where the services are absent');
+    } else {
+      fail('optional surface registration', new Error('command/skill registered without its service'));
+    }
+    const minimalSkips = minimal.logs.filter((line) => line.includes('surface skipped'));
+    const skippedCommands = minimalSkips.filter((line) => line.includes('commands'));
+    const skippedSkills = minimalSkips.filter((line) => line.includes('skills'));
+    if (skippedCommands.length === 1 && skippedSkills.length === 1) {
+      ok('missing command and skill surfaces each log once');
+    } else {
+      fail('skip logging', new Error(`command skips: ${skippedCommands.length}; skill skips: ${skippedSkills.length}`));
+    }
+    if (minimal.listeners.has('tui/rewind-prompt') && minimal.listeners.has('tui/rewind-done')) {
+      ok('TUI decision subscriptions register without commands/skills');
+    } else {
+      fail('TUI subscriptions', new Error(`listeners: ${[...minimal.listeners.keys()].join(', ')}`));
+    }
+    if (minimal.disposers.length === 2) ok('tool + TUI surfaces yield per-surface disposers');
+    else fail('per-surface disposers', new Error(`expected 2 disposers, got ${minimal.disposers.length}`));
+
+    // Base-backed profile: all three surfaces plus the TUI subscriptions.
+    const full = makeEntryCtx(new Set(['agents', 'compaction', 'commands', 'skills']));
+    apply(full.ctx);
+    if (full.registrations.tools.length === 1
+      && full.registrations.commands.length === 1
+      && full.registrations.skills.length === 1) {
+      ok('tool, command, and skill surfaces register on a full profile');
+    } else {
+      fail('full-profile surfaces', new Error(
+        `tools=${full.registrations.tools.length} commands=${full.registrations.commands.length} skills=${full.registrations.skills.length}`,
+      ));
+    }
+    if (full.logs.filter((line) => line.includes('surface skipped')).length === 0) {
+      ok('no skip lines when every optional service is present');
+    } else {
+      fail('unexpected skip logging', new Error(full.logs.join('\n')));
+    }
+    if (full.effectLabels.length === 1 && full.disposers.length === 4) {
+      ok('one effect owns four per-surface disposers on a full profile');
+    } else {
+      fail('full-profile cleanup', new Error(
+        `effects=${full.effectLabels.length} disposers=${full.disposers.length}`,
+      ));
+    }
+  } catch (err) {
+    fail('entry apply simulation', err);
+  }
 }
 
 // ── 8. syntax + unit tests ──────────────────────────────────────────────────

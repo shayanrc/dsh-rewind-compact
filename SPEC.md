@@ -106,9 +106,9 @@ The built-in `/rewind`, `/compact`, and auto-compaction are untouched. The plugi
 
 ### R9 — Profiles
 
-The bundle loads in all profiles (that is automatic for a bundle); the TUI picker surface exists in the TUI profile. No profile-specific hacks.
+The bundle loads in all profiles. `tools` and `agents` are hard requirements; the command and skill surfaces are optional and are probed and registered only where the profile provides the `commands`/`skills` services, with one log line per skipped surface. `sdk-minimal` deliberately provides neither and must still load the tool. The TUI picker surface exists in the TUI profile. No profile-specific hacks.
 
-**Acceptance**: the patch does not gate itself to one profile; README documents per-profile install (`dsh plugin --profile <name> ...`) and which surface works where.
+**Acceptance**: the patch does not gate itself to one profile; a profile without `commands`/`skills` (sdk-minimal) still activates the entry and registers the tool, while a base-backed profile registers tool, command, and skill. README documents per-profile install (`dsh plugin --profile <name> ...`) and which surface works where.
 
 ### R10 — Files: warn, don't revert (v1)
 
