@@ -4,7 +4,7 @@ Plugin bundle for the DeepSeek Harness (`dsh`): rewind the conversation to a cho
 
 ## Surfaces
 
-- TUI interactive picker — the native Esc-Esc rewind overlay gains two confirm-pane modes: **Rewind + compact after** / **Rewind + compact before** (files-changed warning in the description). Requires the `session.rewind.intercept` grant (default deny).
+- TUI interactive picker — the native Esc-Esc rewind overlay gains the after confirm-pane mode **Rewind + compact after** (files-changed warning in the description). Before mode is not offered on the TUI (ADR D5); it remains on the `/rewind-compact` command and the tool. Requires the `session.rewind.intercept` grant (default deny).
 - TUI command `/rewind-compact [turn] [after|before]` — fast path; no arguments points at the picker.
 - Model-invoked tool `rewind_compact(point, mode, rewind)` — compaction ungated; rewind requires user approval (fails closed headless).
 - Skill `rewind-compact` — when to propose, tool rules, summary format, post-fork etiquette.

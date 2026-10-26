@@ -137,15 +137,26 @@ What each step proves:
    If the grant is missing, the TUI logs a warning naming the plugin identity —
    use the exact id from that log as `<componentId>` (the guard identifies the
    subscribing plugin by its verified component identity).
-2. **Open the rewind overlay** (Esc Esc on empty input) and pick a turn.
-   The confirm pane must now show a choice list: the built-in
-   conversation-only rewind, then **Rewind + compact after** and
-   **Rewind + compact before** (with the files-changed warning when
-   applicable). No-op sides are omitted (last turn has no "after", first turn
-   has no "before").
+2. **Open the rewind overlay** (Esc Esc on empty input) and pick a **user
+   message row** — the overlay lists messages, and the plugin maps the row to
+   its enclosing completed turn (ADR D4). Expected confirm-pane list:
+   - the built-in conversation-only rewind, then
+   - **Rewind + compact after** (with
+     `(N file(s) changed since this point — not reverted)` when file-editing
+     tools ran after the turn cut).
+
+   Only after mode is offered on this surface: before mode was dropped from the
+   TUI (ADR D5) and remains on the command/tool. The after side is omitted on
+   the last completed turn (no tail), and a row in the still-open turn is
+   ineligible (no plugin modes; the built-in rewind remains). The count is
+   derived from the turn cut (`turnStart.seq - 1`), not from the picked message
+   seq, so a message picked mid-turn does not hide earlier changes.
 3. **Pick "Rewind + compact after"** — the TUI forks; a toast reports the
-   compact summary. Verify: the new session contains the hybrid summary, the
-   pre-rewind session keeps the discarded side and stays resumable.
+   compact summary. Verify: the new session ends with the five-field scaffold
+   summary (v1 is scaffold-only), the pre-rewind session keeps the discarded
+   side and stays resumable. No before mode should ever be offered here; if a
+   stale TUI dispatches one, the toast says before mode is not available on the
+   TUI.
 4. **Fast path**: `/rewind-compact 3 after` forks directly with the same
    result; bare `/rewind-compact` points at the picker.
 
