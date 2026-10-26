@@ -1,6 +1,6 @@
 ---
 name: testing-rewind-compact
-description: How to test this bundle for real — refresh the profile, drive the web E2E or the TUI picker, and recognise a pass. Use when verifying a change to the plugin, reproducing a fork/compact failure, or installing the bundle into a profile.
+description: How to test this bundle for real — refresh the profile, drive the web E2E or the TUI command, and recognise a pass. Use when verifying a change to the plugin, reproducing a fork/compact failure, or installing the bundle into a profile.
 ---
 
 # Testing rewind-compact
@@ -66,7 +66,7 @@ Three UI gates the script does not clear on a current build:
 Headless only in a sandboxed session: the full chromium build traps
 (`core dumped`); the `chromium_headless_shell` binary is what runs.
 
-## 3. TUI rig
+## 3. TUI rig (command; picker descoped)
 
 Esc-Esc modes need the grant, already present in
 `~/.dsh-tui/extension-grants.json`:
@@ -75,10 +75,7 @@ Esc-Esc modes need the grant, already present in
 {"grants": {"dsh-rewind-compact": [{"name": "session.rewind.intercept", "scope": "decision event subscription"}]}}
 ```
 
-- Two or three turns → **Esc Esc** on empty input → the confirm pane lists the
-  built-in rewind plus **Rewind + compact after** only (ADR D5; the after side
-  is omitted on the last completed turn) → pick → the TUI forks and a toast
-  names the child plus the scaffold summary.
+- **Picker descoped for v1 (RWC-018):** the Esc-Esc pane does not show the plugin mode; a backend bundle cannot register in the TUI host `DecisionEvents` registry. Use the command below. The picker steps are the post-v1 target.
 - Fast path — the one that exercises `lib/rewind.js`'s seed:
   `/rewind-compact 3 before` (before mode stays on the command/tool).
 - Tool path: `rewind: false` is **retired** in v1 (returns `ok:false`,

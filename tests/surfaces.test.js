@@ -60,7 +60,6 @@ const surfaces = {
   tool: { name: 'rewind_compact' },
   command: () => ({ name: 'rewind-compact' }),
   skill: () => ({ name: 'rewind-compact' }),
-  decisions: () => () => {},
 };
 
 test('sdk-minimal-like profile (no commands/skills) still registers the tool and TUI surface', () => {
@@ -97,8 +96,8 @@ test('each registered surface yields its own disposer from the single effect', (
     yield* registerSurfaces(fake.ctx, surfaces);
   }, 'rewind-compact lifecycle');
 
-  // tool + command + skill + decisions, all yielded to the one effect.
-  assert.equal(fake.disposers.length, 4);
+  // tool + command + skill, all yielded to the one effect.
+  assert.equal(fake.disposers.length, 3);
   for (const dispose of fake.disposers) assert.equal(typeof dispose, 'function');
   for (const dispose of fake.disposers) dispose();
   assert.deepEqual(fake.disposed, ['tool', 'command', 'skill']);

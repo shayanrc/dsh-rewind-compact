@@ -911,13 +911,10 @@ console.log('7. surface contract (commands/skills optional, tools/agents require
     } else {
       fail('skip logging', new Error(`command skips: ${skippedCommands.length}; skill skips: ${skippedSkills.length}`));
     }
-    if (minimal.listeners.has('tui/rewind-prompt') && minimal.listeners.has('tui/rewind-done')) {
-      ok('TUI decision subscriptions register without commands/skills');
-    } else {
-      fail('TUI subscriptions', new Error(`listeners: ${[...minimal.listeners.keys()].join(', ')}`));
-    }
-    if (minimal.disposers.length === 2) ok('tool + TUI surfaces yield per-surface disposers');
-    else fail('per-surface disposers', new Error(`expected 2 disposers, got ${minimal.disposers.length}`));
+    if (minimal.listeners.size === 0) ok('descoped TUI picker registers no decision listeners');
+    else fail('descoped TUI listeners', new Error(`listeners: ${[...minimal.listeners.keys()].join(', ')}`));
+    if (minimal.disposers.length === 1) ok('tool surface yields its own disposer');
+    else fail('per-surface disposers', new Error(`expected 1 disposer, got ${minimal.disposers.length}`));
 
     // Base-backed profile: all three surfaces plus the TUI subscriptions.
     const full = makeEntryCtx(new Set(['agents', 'compaction', 'commands', 'skills']));
@@ -936,8 +933,8 @@ console.log('7. surface contract (commands/skills optional, tools/agents require
     } else {
       fail('unexpected skip logging', new Error(full.logs.join('\n')));
     }
-    if (full.effectLabels.length === 1 && full.disposers.length === 4) {
-      ok('one effect owns four per-surface disposers on a full profile');
+    if (full.effectLabels.length === 1 && full.disposers.length === 3) {
+      ok('one effect owns three per-surface disposers on a full profile');
     } else {
       fail('full-profile cleanup', new Error(
         `effects=${full.effectLabels.length} disposers=${full.disposers.length}`,

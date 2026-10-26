@@ -108,3 +108,5 @@ Expected: TUI offers after only; the after child ends with the scaffold; before 
 - Independent review (2026-10-27): **PASS**. Verified after-only offer, before-mode error toast, `summaryInput` tool-call inclusion (Files/Commands/Errors), and one summary append.
 
 - Independent verification (2026-10-27): **VERIFIED**. Reran after mode: one scaffold with Files changed/Commands/Errors, warning count == changedFiles(tail), old surfaceEvents-only reproduced as empty; failed append toast, source untouched; command/tool before still works.
+
+- **Descoped for v1 (RWC-018):** the after-only handler, tool-call scaffold, and failure toasts are implemented and unit-tested; the picker surface is not registered. The TUI command/tool remain.

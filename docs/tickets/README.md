@@ -70,9 +70,9 @@ dependencies, and verification. The review evidence is in
 | [RWC-013](RWC-013-test-probe-hardening.md) | Harden tests and contract probe | P1 | done | test | L | 001; final gate after the code fixes | §5, §6 |
 | [RWC-014](RWC-014-package-distribution.md) | Fix package/distribution metadata | P2 | done | chore | S | 001 (coord. 013) | R1 |
 | [RWC-015](RWC-015-spec-decisions.md) | Resolve spec ambiguities (ADR) | P0 | done | decision | M | — | R4–R7, R11, R12 |
-| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | blocked | test | M | 001, 012, 013, 014, 018; all P0/P1 code tickets | §6, §7 |
+| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | done | test | M | 001, 012, 013, 014; all P0/P1 code tickets | §6, §7 |
 | [RWC-017](RWC-017-integrated-re-review-gate.md) | Independent integrated re-review + verify gate | P0 | done | test | M | 002–007, 009, 010, 012–015 | §5, §6 |
-| [RWC-018](RWC-018-tui-decision-event-host.md) | TUI picker host DecisionEvents integration | P0 | blocked | bug | L | 015 | R3.1, R6 |
+| [RWC-018](RWC-018-tui-decision-event-host.md) | TUI picker host DecisionEvents integration | P0 | done (descoped v1) | bug | L | 015 | R3.1, R6 |
 
 ## Traceability: review finding → ticket
 
@@ -93,7 +93,7 @@ dependencies, and verification. The review evidence is in
 | Missing tests for TUI/tool/command/rewind; probe holes | RWC-013 |
 | No `files`/`engines`; unused schemastery peer; private decision | RWC-014 |
 | Spec contradictions (R4/R7, R5 fallback, R6 rows, R11, R12) | RWC-015 |
-| Verification uses web not temp dsh-tui; in-place/TUI unverified | RWC-016 |
+| Verification uses web not temp dsh-tui; in-place/TUI unverified | RWC-016, RWC-018 |
 
 ## Spec coverage
 
@@ -101,27 +101,24 @@ dependencies, and verification. The review evidence is in
 |---|---|---|
 | R1 bundle | met | RWC-014 (packaging) |
 | R2 composition | met (scaffold-only scoped) | RWC-003, RWC-004, RWC-015 |
-| R3 surfaces | met | RWC-005, RWC-006, RWC-009 |
+| R3 surfaces | met (TUI command/tool/skill; picker descoped) | RWC-005, RWC-006, RWC-009, RWC-018 |
 | R4 fork semantics | met | RWC-002, RWC-003, RWC-006 |
 | R5 five-field scaffold (v1) | met | RWC-003, RWC-004, RWC-007, RWC-009, RWC-010, RWC-015 |
-| R6 picker | met | RWC-005, RWC-008, RWC-010 |
+| R6 picker | descoped for v1 (RWC-018) | RWC-005, RWC-008, RWC-010, RWC-018 |
 | R7 gating | met | RWC-004, RWC-007, RWC-015 |
 | R8 coexistence | met | RWC-013 (patch regression check) |
-| R9 profiles | met (load/registration; live call deferred to 016) | RWC-012 |
+| R9 profiles | met (load/registration; release evidence in 016) | RWC-012, RWC-016 |
 | R10 files warn | met | RWC-010 |
 | R11 skill content | met | RWC-011, RWC-015 |
 | R12 naming/title | met (best-effort event) | RWC-002, RWC-011 |
 
-## Recommended sequence
+## Final sequence
 
-1. **Done:** RWC-001, RWC-008, RWC-014, RWC-015.
-2. **Remediation:** the fork/seed, TUI/tool, profiles, docs, and test/probe
-   lanes were implemented in parallel; each ticket records its evidence.
-3. **Gate:** RWC-017 independently reviews and verifies every changed ticket.
-   Close a ticket only with both verdicts.
-4. **Release:** RWC-016 after a green RWC-017, on throwaway profiles only; the
-   real TUI observation and any live model call on sdk-minimal are recorded
-   there.
+1. **Done:** all tickets RWC-001–RWC-018.
+2. **TUI picker:** descoped for v1 by RWC-018; the TUI command and tool ship.
+3. **Gate:** RWC-017 reviewed and verified every changed ticket.
+4. **Release:** RWC-016 records the web E2E, packaging, profile, uninstall, and
+   contract evidence on throwaway profiles.
 
 ## Dependency graph and agent waves
 

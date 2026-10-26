@@ -6,7 +6,7 @@ Plugin bundle for the DeepSeek Harness (`dsh`): rewind the conversation to a cho
 
 - TUI command `/rewind-compact [turn] [after|before]` — fast path; no arguments points at the picker.
 
-  **Known limitation (RWC-018):** the Esc-Esc picker mode is not active on dsh-tui 0.17.0. A profile bundle is a backend activation; the TUI dispatcher reads only its host-mediated `DecisionEvents` registry, and a backend cannot register there. The TUI **command** and the model tool both work; the picker needs a native TUI plugin or a harness bridge (see `docs/tickets/RWC-018-tui-decision-event-host.md`).
+  **Descoped for v1 (RWC-018):** the Esc-Esc picker mode is not active on dsh-tui 0.17.0. A profile bundle is a backend activation; the TUI dispatcher reads only its host-mediated `DecisionEvents` registry, and a backend cannot register there. The TUI **command** and the model tool both work; the picker needs a native TUI plugin or a harness bridge (see `docs/tickets/RWC-018-tui-decision-event-host.md`).
 - Model-invoked tool `rewind_compact(point, mode, rewind)` — `rewind: true` forks a new session and requires direct human authority in the current turn (fails closed headless/sdk/goal-round). `rewind: false` is retired in v1: it returns a documented unsupported result and never touches the transcript.
 - Skill `rewind-compact` — when to propose, tool rules, summary format, post-fork etiquette.
 
@@ -56,7 +56,7 @@ options, `compactRegion`) against **this checkout's** `lib/`; see
 
 | Surface | Where it works |
 |---|---|
-| Esc-Esc rewind picker (after mode) | **Blocked (RWC-018)** on dsh-tui 0.17.0: backend bundle cannot register host DecisionEvents; use the TUI command/tool |
+| Esc-Esc rewind picker (after mode) | **Descoped for v1** (RWC-018): backend bundle cannot register host DecisionEvents; use the TUI command/tool |
 | `/rewind-compact` command | profiles providing the `commands` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |
 | `rewind_compact` tool | every profile that loads the bundle (model-invoked) |
 | `rewind-compact` skill | profiles providing the `skills` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |

@@ -251,7 +251,7 @@ not an option either: 0.2.1 folds it from log-only `session/title` events
 publication, best-effort: an untitled source appends nothing and a failed
 append never aborts the fork (RWC-015 D7).
 
-## 10. TUI decision events (the interactive picker seam)
+## 10. TUI decision events (descoped picker seam, RWC-018)
 
 - Plugins subscribe with plain `ctx.on('tui/rewind-prompt', listener)`; the
   return value is the decision: `{cancel: true, reason}` or
@@ -264,6 +264,8 @@ append never aborts the fork (RWC-015 D7).
   `T/lib/types/dsh-adapter/extension-events.d.ts:106-112`). This bundle
   answers with its after mode only (RWC-015 D5); it maps `seq` to the enclosing
   completed turn first, and a row in the still-open turn is ineligible.
+- **v1 status:** the picker seam is descoped: a profile bundle is a backend activation, the TUI dispatch reads only its host-mediated registry, and raw `ctx.on` is absent. The facts below are the post-v1 target.
+
 - `tui/rewind-done` fires after the TUI's own fork with `{text, mode,
   boundarySeq, sourceSessionId, childSessionId, sessionId, cwd}`;
   `boundarySeq` is the **inclusive source cut** the child seed ends at

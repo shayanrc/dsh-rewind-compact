@@ -104,3 +104,5 @@ Expected: after mode appears for eligible non-last rows; no-op/open-turn rows om
 - Independent review (2026-10-27): **PASS**. Verified message→completed-turn mapping, cut `turnStart.seq-1`, after-only answer, last-turn no-op, open-turn rejection, and warning count from the cut.
 
 - Independent verification (2026-10-27): **VERIFIED**. Reran turn 14/message 18/end 23: maps to turn 14, cut 13, after-only, last/open-turn undefined, warning 1 from cut vs 0 from row seq.
+
+- **Descoped for v1 (RWC-018):** the seq→turn mapping and after-only answer are implemented and unit-tested, but the picker surface is not registered because a profile bundle cannot use the TUI host DecisionEvents registry. The TUI command/tool are the shipped surfaces.

@@ -106,3 +106,5 @@ Expected: no silent failure; no orphan scaffold without a report.
 - Independent review (2026-10-27): **PASS**. Verified missing-source/missing-child/throwing-append error toasts, no `undefined` or success toast, and retired-path atomicity.
 
 - Independent verification (2026-10-27): **VERIFIED**. Missing source, missing child, and throwing append each produce a non-empty toast naming both ids; no success text; retired path cannot mutate. Non-blocking: command/tool seed errors do not always include the source id.
+
+- **Descoped TUI surface (RWC-018):** the failure-toast code is unit-tested, but the picker is not registered in v1; the retired tool path and command errors remain the shipped failure paths.

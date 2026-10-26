@@ -40,6 +40,6 @@ If a field has no data, say so. If the range already contains a prior compact su
 - Files are NOT reverted in v1: the plugin only reports which files changed. Never claim they were.
 - Recovery differs by surface:
   - **Command/tool fork** — the result names the child and the source session; the source keeps the discarded side. The direct-human check is the only authority gate (no prompt).
-  - **TUI** — use the `/rewind-compact` command or the tool. The Esc-Esc picker mode is blocked on dsh-tui 0.17.0 (RWC-018: backend bundle cannot register host DecisionEvents); do not claim it is available. If the picker ever runs, the TUI forks and the plugin appends the scaffold; a failed append is an error toast.
+  - **TUI** — use the `/rewind-compact` command or the tool. The Esc-Esc picker mode is descoped for v1 on dsh-tui 0.17.0 (RWC-018: backend bundle cannot register host DecisionEvents); use the command/tool and do not claim the picker is available. If the picker ever runs, the TUI forks and the plugin appends the scaffold; a failed append is an error toast.
   - **Retired in-place (`rewind: false`)** — nothing happened, so there is nothing to recover; call with `rewind: true` to fork.
 - The forked session title is best-effort: a `session/title` event `<original title> (rewound)` is appended in the child's `setup`, before publication. An untitled source gets no title event, and a failed title append does not abort the fork, so the suffix may be absent or appear late.

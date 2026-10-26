@@ -68,8 +68,8 @@ flowchart TB
   end
 
   subgraph w3["Wave 3 — release"]
-    t018["RWC-018<br/>TUI DecisionEvents host gap<br/>P0 · blocked"]:::blocked
-    t016["RWC-016<br/>fresh-profile verification<br/>P1 · blocked"]:::blocked
+    t018["RWC-018<br/>TUI picker descoped v1<br/>P0 · done"]:::done
+    t016["RWC-016<br/>release verification<br/>P1 · done"]:::done
   end
 
   %% hard prerequisites
@@ -133,16 +133,16 @@ flowchart TB
   v4-only fixture gate, real `Session.create` for both modes, replacement and
   policy fixtures, the child-JSONL proof, the summary source/declaration, and
   the direct-human gate tests.
-- **Remaining:** RWC-016 release verification. The web/tool/command evidence is
-  green, but the real TUI picker does not show the plugin after mode. RWC-018
-  records the host DecisionEvents gap; RWC-016 is blocked on it.
+- **Done:** RWC-016 release verification. RWC-018 descoped the TUI Esc-Esc
+  picker for v1 (backend bundle vs host DecisionEvents); the TUI command/tool
+  ship. Web E2E, packaging, profile, and contract evidence are green.
 
 ## Agent queue (release)
 
 | Agent lane | Ticket | State |
 |---|---|---|
-| **main / release** | RWC-016 | blocked on RWC-018 |
-| **decision** | RWC-018 | blocked; choose native plugin / bridge / descope |
+| **main / release** | RWC-016 | in-progress (final evidence) |
+| **decision** | RWC-018 | done: TUI picker descoped v1 |
 | **review/verify** | closed (RWC-017 done) | — |
 
 ## Completed lanes

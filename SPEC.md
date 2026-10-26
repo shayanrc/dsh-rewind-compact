@@ -46,7 +46,7 @@ The plugin reuses the harness's existing machinery everywhere it exists: the for
 
 The feature is exposed on exactly three surfaces:
 
-1. **TUI picker surface** — the interactive picker is the TUI's native Double-Esc rewind overlay, extended through the plugin decision-event seam: the bundle answers `tui/rewind-prompt` with the after mode only (`rewind-compact-after`; the before mode is dropped from the TUI — ADR D5 — and remains on the command and tool), which the confirm pane renders as a choice list; on pick the TUI forks and dispatches `tui/rewind-done`, which the bundle answers by appending the five-field scaffold to the child session it forked (scaffold-only in v1; child-side compaction is a post-v1 target, ADR D3). The slash command `/rewind-compact [turn] [after|before]` remains as the fast path and keeps both modes; its bare form is itself an interactive picker on every profile that provides the `commands` service — it asks through the harness's user-questions service (`ctx.userQuestions.ask`, the seam behind `ask_user_question`), which web and TUI both render natively: pick the completed turn (newest first, files-changed count), then the side (after recommended / before).
+1. **TUI command surface** — `/rewind-compact [turn] [after|before]` is available in the TUI (and web) through the `commands` service: the fast path forks directly, and its bare form asks through `ctx.userQuestions.ask` (pick the completed turn, newest first with a files-changed count, then the side). **The Esc-Esc picker mode is descoped for v1** (RWC-018, 2026-10-27): a profile bundle is a backend activation, while the TUI dispatch reads only the host-mediated `DecisionEvents` registry; a native TUI plugin or a DSH→TUI bridge is post-v1. The command keeps both modes; the tool remains the model-facing surface.
 2. **Model-invoked tool** `rewind_compact(point, mode, rewind = false)` registered as a runtime tool using the harness's tool-registration seam (the mechanism built-in runtime tools use; find it in the installed harness packages and use it — do not invent a new registration protocol). `rewind = true` is the gated fork path (R7). The `rewind = false` branch keeps its default parameter value for signature compatibility only; in v1 it is retired and returns the documented unsupported result — `ok: false`, `applied: false`, a `reason` recording the retirement, and a note pointing at the fork path — never calling `compactRegion` and never writing to the transcript.
 3. **Skill** `rewind-compact` — a `SKILL.md` in the repo (see R11), wired into the harness skill catalog by whatever mechanism bundles use for skill registration; if the harness has no such mechanism, document the drop-in install path in the repo README and ship the skill directory.
 
@@ -56,14 +56,14 @@ The feature is exposed on exactly three surfaces:
 
 A **rewind run** — any TUI/command fork, or the tool with `rewind: true` — always **forks** to a new session seeded at the chosen boundary. Given boundary point P:
 
-- **after mode**: seed = messages up to and including P, verbatim; then the discarded tail (everything after P) is summarized and the summary appended as one message. On the TUI surface the TUI performs the fork; the plugin appends the scaffold to the child it forked (R3).
-- **before mode**: seed = summary of the discarded prefix (everything before P) as one leading message, then messages from P onward, verbatim. This mode is offered by the command and tool forks only; the TUI does not offer it (R3/R6, ADR D5).
+- **after mode**: seed = messages up to and including P, verbatim; then the discarded tail (everything after P) is summarized and the summary appended as one message.
+- **before mode**: seed = summary of the discarded prefix (everything before P) as one leading message, then messages from P onward, verbatim. Both modes are offered by the command and tool forks; the descoped TUI picker is not a shipped surface.
 
 The pre-rewind session is left unmodified and resumable by its id — that session is the recoverable copy of the discarded side. No hidden regions, no transcript rewriting, no sidecar files.
 
 The tool's in-place path (`rewind: false`) is a compaction under R5/R7, **not a rewind**, and in v1 is retired (RWC-015 D2).
 
-**Acceptance**: code paths exist for both modes on the command and tool surfaces (the TUI offers after only); the after-mode fork result ends with a summary message; the before-mode seed begins with one; the pre-rewind session is never mutated by the plugin (no `append`, no truncation); the old session id is discoverable after the fork (logged, or recorded on the new session, or both); the retired in-place call sites contain no `agents.create` and no `compactRegion` call.
+**Acceptance**: code paths exist for both modes on the command and tool surfaces; the after-mode fork result ends with a summary message; the before-mode seed begins with one; the pre-rewind session is never mutated by the plugin (no `append`, no truncation); the old session id is discoverable after the fork (logged, or recorded on the new session, or both); the retired in-place call sites contain no `agents.create` and no `compactRegion` call.
 
 ### R5 — Summary shape (five-field scaffold)
 
@@ -81,11 +81,9 @@ If a field has no data, the section is present and says so. If the compacted ran
 
 **Acceptance**: the scaffold string built by the plugin contains all five labeled sections; the code derives each section from the range's tool events rather than hardcoding; the nested-summary note exists; the `Files changed` section uses the conservative derivation in field 1 (a read-only transcript reports zero files); the scaffold is delivered inside the compacted range **whenever a closed, balanced range exists** — the open-step tool context must defer compaction to a step-closed hook rather than append outside the range — and never via an unsupported `compactRegion` instructions argument; the before-mode fork is scaffold-first by R4 and is not a range-compaction case.
 
-### R6 — Picker rules
+### R6 — Picker rules (descoped for v1)
 
-**Implementation status (2026-10-27):** blocked by RWC-018 on dsh-tui 0.17.0. A profile bundle is a backend activation and cannot register in the TUI host `DecisionEvents` registry; the TUI command/tool ship, the picker waits for a native TUI plugin or a harness bridge. The rules below are the target.
-
-The interactive picker is the TUI's native rewind overlay (Esc Esc), which lists **user-message rows**. The bundle's `tui/rewind-prompt` answer realizes the designed rules:
+**Status (2026-10-27): descoped by RWC-018.** A profile bundle is a backend activation and cannot register in the TUI host `DecisionEvents` registry; the TUI command and tool ship, and the picker waits for a native TUI plugin or a DSH→TUI bridge. The rules below are the post-v1 target and are not v1 acceptance criteria.
 
 - the picked user-message row is mapped to its enclosing `turn/start`, and that turn must have ended. A row in the still-open turn is ineligible (no plugin modes; the built-in rewind remains) until that turn ends. There is no mid-turn point;
 - the fork cut is `turnStart.seq - 1` (the `boundarySeq` `tui/rewind-done` receives), never the picked row's seq, and the files-changed warning is counted from that same cut;
@@ -94,12 +92,12 @@ The interactive picker is the TUI's native rewind overlay (Esc Esc), which lists
 - ranges that already contain a prior summary stay selectable (nested compaction);
 - the mode description carries the warning "N file(s) changed since this point — not reverted" when file-editing tools ran after the cut, using the conservative `Files changed` set of R5 field 1 (v1 warns, does not revert — see R10).
 
-**Acceptance**: the `tui/rewind-prompt` answer maps the picked message seq to its enclosing completed turn and returns the after mode with the id `rewind-compact-after` and the label "Rewind + compact after"; the code computes per-boundary validity for that boundary and omits the no-op mode; before mode is never returned by this surface; the files-changed warning is counted from the turn cut (`turnStart.seq - 1`, via the same conservative helper as R5 field 1), not the picked row's seq, and appended to the mode description; a row in the open turn yields no modes; there is no code path that selects a mid-turn point.
+**Acceptance (post-v1, not v1):** the `tui/rewind-prompt` answer maps the picked message seq to its enclosing completed turn and returns the after mode with the exact id/label; before mode is never returned by this surface; the warning uses the turn cut; an open-turn row yields no modes. The v1 acceptance is that the TUI command and tool work and the picker is documented as descoped.
 
 ### R7 — Gating
 
 - The **tool**'s in-place path (`mode` with `rewind = false`) is a compaction, not a rewind, and is **ungated** — it never creates a session. In v1 it is **retired**: it returns the documented unsupported result (R3) without calling `compactRegion` and without writing to the transcript. If in-place returns after v1, it stays ungated, still never creates a session, and must satisfy the closed-range rule in R5 (RWC-015 D2b).
-- Any operation that rewinds (forks) is **gated**: the TUI picker path is the human's own action inside the TUI's rewind flow, and the decision-event subscriptions that enable it are themselves D-7-gated on the `session.rewind.intercept` grant (default deny — the user must grant it in the TUI's permission store); through the tool it requires **direct human authority in the current turn** — the harness's own authority pattern (a user-sourced `user/message` in the open turn, as in `dsh-tool-goal`'s `requireDirectHuman`). In profiles with no human (headless/sdk, goal-round turns) the check fails closed.
+- Any operation that rewinds (forks) is **gated**: through the tool it requires **direct human authority in the current turn** — the harness's own authority pattern (a user-sourced `user/message` in the open turn, as in `dsh-tool-goal`'s `requireDirectHuman`). In profiles with no human (headless/sdk, goal-round turns) the check fails closed. The descoped TUI picker is not a v1 path; if it returns post-v1 it must be D-7-gated on `session.rewind.intercept` (default deny).
 - The plugin authors **no decision prompt**: the tool's gate is the direct-human authority check itself, and the skill (R11) defers to this clause. A conversational ask by the model is guidance, not a gate.
 
 **Acceptance**: the tool's ungated path contains no fork call and, in v1, no `compactRegion` call and no transcript append (it returns the retired result); the tool's fork path performs the direct-human authority check (a user-sourced `user/message` in the open turn, via the session turn-boundary projection); headless behavior is fail-closed (no silent fork); no plugin-authored decision prompt exists on the tool path.
@@ -112,13 +110,13 @@ The built-in `/rewind`, `/compact`, and auto-compaction are untouched. The plugi
 
 ### R9 — Profiles
 
-The bundle loads in all profiles. `tools` and `agents` are hard requirements; the command and skill surfaces are optional and are probed and registered only where the profile provides the `commands`/`skills` services, with one log line per skipped surface. `sdk-minimal` deliberately provides neither and must still load the tool. The TUI picker surface exists in the TUI profile. No profile-specific hacks.
+The bundle loads in all profiles. `tools` and `agents` are hard requirements; the command and skill surfaces are optional and are probed and registered only where the profile provides the `commands`/`skills` services, with one log line per skipped surface. `sdk-minimal` deliberately provides neither and must still load the tool. The TUI command and tool exist in the TUI profile; the Esc-Esc picker is descoped (R6/RWC-018). No profile-specific hacks.
 
 **Acceptance**: the patch does not gate itself to one profile; a profile without `commands`/`skills` (sdk-minimal) still activates the entry and registers the tool, while a base-backed profile registers tool, command, and skill. README documents per-profile install (`dsh plugin --profile <name> ...`) and which surface works where.
 
 ### R10 — Files: warn, don't revert (v1)
 
-v1 never reverts files. The plugin reports which files changed after the boundary (picker warning, R6; scaffold field, R5) and does nothing else to the filesystem. Both reports use the same conservative `Files changed` set as R5 field 1: `write`/`edit` arguments plus structured result metadata, structured `bash`-applied changes only (none in v1), never reads/searches/fetches, normalized and deduplicated.
+v1 never reverts files. The plugin reports which files changed after the boundary (command picker warning; scaffold field, R5) and does nothing else to the filesystem. Both reports use the same conservative `Files changed` set as R5 field 1: `write`/`edit` arguments plus structured result metadata, structured `bash`-applied changes only (none in v1), never reads/searches/fetches, normalized and deduplicated.
 
 **Acceptance**: no code performs file restoration, snapshotting, or git rollback; a comment or README line marks revert as explicitly deferred v2; the warning and the scaffold derive from the same helper, so their counts agree for the same range.
 
@@ -171,7 +169,7 @@ Explicitly out of scope; do not build:
 2. The package typechecks/builds with the harness's toolchain conventions.
 3. Two verification gates, both required:
    - **Compose gate**: copy `$DSH_HOME/profiles/dsh-tui` to a **new throwaway profile directory**, install the bundle into it (`dsh plugin --profile <scratch> add --offline file:$PWD`), then run `dsh --profile <scratch> --dump-config` and confirm the rewind-compact entry composes. Never against the user's live profile; never boot the live TUI.
-   - **Live gate**: at least one live run of a scratch profile per shipped surface — the web E2E (`scripts/test-web-profile.sh` + `scripts/e2e-web-test.py`) for the command/tool, and the manual TUI picker run in `TESTING.md` (with the `session.rewind.intercept` grant and recorded logs/screenshots) for the decision-event surface. The TUI run exercises after mode only (R3/R6); before mode is verified through the command/tool fork.
+   - **Live gate**: at least one live run of a scratch profile per shipped surface — the web E2E (`scripts/test-web-profile.sh` + `scripts/e2e-web-test.py`) for the command/tool, and a TUI command/fast-path run. The Esc-Esc picker is descoped (R6/RWC-018), so no grant/picker run is required for v1.
    Both gates create their scratch profile per §7, then remove it and record the cleanup in the run's evidence.
 4. `README.md` exists and covers: what the plugin does, install per profile, the three surfaces, the v1 limitations (scaffold-only summaries; no file revert; no in-place path; headless rewind fails closed).
 5. The repo layout is: `package.json`, `cordis.patch.yml`, `lib/` (or `src/` + build), `skill/rewind-compact/SKILL.md`, `README.md`, `SPEC.md` (this file, copied), `tests/` if applicable.

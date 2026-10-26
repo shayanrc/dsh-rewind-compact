@@ -1,6 +1,6 @@
 # RWC-018 — TUI picker requires a host-mediated DecisionEvents activation
 
-- **Status:** blocked
+- **Status:** done
 - **Priority:** P0
 - **Type:** bug / architecture
 - **Estimate:** L
@@ -62,28 +62,23 @@ without new harness work.
 
 ## Tasks
 
-- [ ] Choose the option (owner decision) and record it in RWC-015/RWC-016.
-- [ ] If native plugin: add the package/manifest/facet, wire it to the DSH
+- [x] Chosen: **descope the TUI picker for v1** (owner, 2026-10-27); recorded in SPEC R3.1/R6 and RWC-016.
+- [ ] *(post-v1)* If native plugin: add the package/manifest/facet, wire it to the DSH
       session services, install it through the TUI plugin manager, and record a
       real Esc-Esc run.
-- [ ] If bridge: add the host-mediated registration path for profile bundles
+- [ ] *(post-v1)* If bridge: add the host-mediated registration path for profile bundles
       and a session/agent access seam; add an integration test.
-- [ ] If descope: update SPEC R3.1/R6, README, SKILL, TESTING, and reopen/
+- [x] If descope: update SPEC R3.1/R6, README, SKILL, TESTING, and reopen/
       descope RWC-005/RWC-006/RWC-007's TUI acceptance.
-- [ ] Add a test that fails when the real TUI pane omits the plugin mode (not
-      just the handler unit test).
-- [ ] Record the exact grant key/scope and admission evidence.
+- [x] The entry no longer registers the picker; `scripts/check-contracts.mjs` asserts zero decision listeners.
+- [x] Recorded: `dsh.rewind-compact` / `session:*` admits, but does not bridge the backend activation; the live grant was restored.
 
 ## Acceptance criteria
 
-- [ ] A real scratch TUI Esc-Esc run shows `Rewind + compact after` for an
-      eligible completed turn, and selecting it appends the scaffold to the
-      child with a visible toast.
-- [ ] The handler is registered through the host-mediated DecisionEvents
-      registry (or the picker is explicitly descoped in the spec/docs).
-- [ ] The misleading “subscribed” log is gone or reports the actual
-      registration result.
-- [ ] RWC-016 can record the TUI surface as pass or descoped.
+- [x] **Descope acceptance:** the v1 entry registers no TUI decision listeners, the picker is documented as descoped, and the TUI command/tool remain.
+- [x] The picker is explicitly descoped in SPEC/README/TESTING/SKILL/AGENTS/HARNESS.
+- [x] The misleading “subscribed” log is gone: the entry no longer subscribes.
+- [x] RWC-016 records the TUI surface as descoped for v1.
 
 ## Verification
 
@@ -109,3 +104,10 @@ Expected: plugin mode in the confirm pane, or a documented descope.
   → admission `compatible`; the pane still showed only the built-in rewind
   because the backend activation is not in the TUI host composition.
 - Live grant file restored after the test; scratch profiles removed.
+
+## Resolution (2026-10-27)
+
+Owner chose **descope for v1**. The entry no longer registers the picker;
+`lib/tui-rewind.js` remains unit-tested for a future native TUI plugin. The
+shipped TUI surfaces are the `/rewind-compact` command and the model tool.
+RWC-016 is unblocked and records the picker as descoped, not failed.

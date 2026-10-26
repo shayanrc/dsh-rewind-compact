@@ -155,7 +155,7 @@ append) is not a fork failure.
 Use the throwaway profile from Gate 1 (or `tui-rc-test`), not the live `dsh-tui`
 profile.
 
-**Blocked:** the Esc-Esc picker mode does not render on dsh-tui 0.17.0 (RWC-018: backend bundle vs host DecisionEvents). The `/rewind-compact` command and the tool still work in the TUI. The steps below are the target once RWC-018 lands.
+**Descoped for v1:** the Esc-Esc picker mode does not render on dsh-tui 0.17.0 (RWC-018: backend bundle vs host DecisionEvents). The `/rewind-compact` command and the tool work in the TUI. The picker steps below are the post-v1 target, not a release gate.
 
 1. **Grant the permission** (default deny, D-7): in the TUI's permission UI
    grant `session.rewind.intercept` to `dsh-rewind-compact`, or add it to the
