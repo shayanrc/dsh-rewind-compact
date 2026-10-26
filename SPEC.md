@@ -46,7 +46,7 @@ The plugin reuses the harness's existing machinery everywhere it exists: the for
 
 The feature is exposed on exactly three surfaces:
 
-1. **TUI picker surface** — the interactive picker is the TUI's native Double-Esc rewind overlay, extended through the plugin decision-event seam: the bundle answers `tui/rewind-prompt` with its two modes (`rewind-compact-after` / `rewind-compact-before`), which the confirm pane renders as a choice list; on pick the TUI forks and dispatches `tui/rewind-done`, which the bundle answers by compacting the chosen side inside the child session. The slash command `/rewind-compact [turn] [after|before]` remains as the fast path; its bare form is itself an interactive picker on every profile — it asks through the harness's user-questions service (`ctx.userQuestions.ask`, the seam behind `ask_user_question`), which web and TUI both render natively: pick the completed turn (newest first, files-changed count), then the side (after recommended / before).
+1. **TUI picker surface** — the interactive picker is the TUI's native Double-Esc rewind overlay, extended through the plugin decision-event seam: the bundle answers `tui/rewind-prompt` with the after mode only (`rewind-compact-after`; before mode is dropped from the TUI — ADR D5 — and remains on the command and tool), which the confirm pane renders as a choice list; on pick the TUI forks and dispatches `tui/rewind-done`, which the bundle answers by compacting the chosen side inside the child session. The slash command `/rewind-compact [turn] [after|before]` remains as the fast path; its bare form is itself an interactive picker on every profile — it asks through the harness's user-questions service (`ctx.userQuestions.ask`, the seam behind `ask_user_question`), which web and TUI both render natively: pick the completed turn (newest first, files-changed count), then the side (after recommended / before).
 2. **Model-invoked tool** `rewind_compact(point, mode, rewind = false)` registered as a runtime tool using the harness's tool-registration seam (the mechanism built-in runtime tools use; find it in the installed harness packages and use it — do not invent a new registration protocol). `rewind = false` (default) is the ungated in-place compaction path; `rewind = true` is the gated fork path (R7).
 3. **Skill** `rewind-compact` — a `SKILL.md` in the repo (see R11), wired into the harness skill catalog by whatever mechanism bundles use for skill registration; if the harness has no such mechanism, document the drop-in install path in the repo README and ship the skill directory.
 
@@ -81,15 +81,16 @@ If a field has no data, the section is present and says so. If the compacted ran
 
 ### R6 — Picker rules
 
-The interactive picker is the TUI's native rewind overlay (Esc Esc); the bundle's `tui/rewind-prompt` answer realizes the designed rules:
+The interactive picker is the TUI's native rewind overlay (Esc Esc), which lists **user-message rows**. The bundle's `tui/rewind-prompt` answer realizes the designed rules:
 
-- the overlay lists **completed turn boundaries only** (never mid-turn steps);
-- the mode choice **after / before** is the confirm pane's two modes, labeled "Rewind + compact after" and "Rewind + compact before";
-- no-ops are omitted: after-mode is not offered when the boundary is the last turn (no tail), before-mode is not offered when it is the first turn (no prefix);
+- the picked row is mapped to its enclosing `turn/start`, and that turn must have ended: a row in the still-open turn is ineligible (no plugin modes; the built-in rewind remains) until that turn ends. There is no mid-turn point;
+- the fork cut is `turnStart.seq - 1` (the `boundarySeq` `tui/rewind-done` receives), never the picked row's seq;
+- the confirm pane offers the **after** mode only, labeled "Rewind + compact after" (before mode is dropped from this surface — ADR D5 — and remains on the command and tool);
+- no-ops are omitted: after-mode is not offered when the boundary is the last completed turn (no tail);
 - ranges that already contain a prior summary stay selectable (nested compaction);
-- the mode description carries the warning "N file(s) changed since this point — not reverted" when file-editing tools ran after the boundary (v1 warns, does not revert — see R10).
+- the mode description carries the warning "N file(s) changed since this point — not reverted" when file-editing tools ran after the cut (v1 warns, does not revert — see R10).
 
-**Acceptance**: the `tui/rewind-prompt` answer returns the two modes with the ids `rewind-compact-after` / `rewind-compact-before` and the labels above; the code computes per-boundary validity for the chosen point and omits the no-op mode; the files-changed warning is appended to the mode descriptions; there is no code path that selects a mid-turn point.
+**Acceptance**: the `tui/rewind-prompt` answer maps the picked message seq to its enclosing completed turn and returns the after mode with the id `rewind-compact-after` and the label "Rewind + compact after"; the code computes per-boundary validity for that boundary and omits the no-op mode; the files-changed warning is counted from the turn cut and appended to the mode description; a row in the open turn yields no modes; there is no code path that selects a mid-turn point.
 
 ### R7 — Gating
 
