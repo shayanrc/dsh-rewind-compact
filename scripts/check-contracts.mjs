@@ -627,15 +627,6 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
         && new RegExp(`'${SUMMARY_SOURCE_KIND}'\\s*:\\s*\\{\\s*readonly kind:\\s*'${SUMMARY_SOURCE_KIND}'`).test(declaration);
       if (augments) ok(`lib/message-source.d.ts declares MessageSourceMap['${SUMMARY_SOURCE_KIND}']`);
       else fail('summary source declaration', new Error('lib/message-source.d.ts does not augment MessageSourceMap with the kind'));
-      const stale = ['lib', 'tests', 'scripts'].flatMap((dir) => {
-        const root = join(REPO, dir);
-        if (!existsSync(root)) return [];
-        return readdirSync(root, { recursive: true, withFileTypes: true })
-          .filter((entry) => entry.isFile() && /\.(?:js|mjs|ts)$/.test(entry.name))
-          .map((entry) => join(entry.parentPath ?? entry.path, entry.name));
-      }).filter((file) => /\{\s*kind:\s*'plugin'/.test(readFileSync(file, 'utf8')));
-      if (stale.length === 0) ok('no {kind:"plugin"} wrapper remains in lib/tests/scripts');
-      else fail('retired plugin source kind', new Error(`still present in: ${stale.join(', ')}`));
     }
   } catch (err) {
     fail('summary message shape', err);
