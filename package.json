@@ -9,7 +9,7 @@
     "test": "node --test tests/",
     "check": "node scripts/check-contracts.mjs --profile ${DSH_PROFILE:-dsh-tui}"
   },
-  "description": "Rewind-compact plugin bundle for the DeepSeek Harness: rewind the conversation to a chosen turn boundary and compact one side into a hybrid summary.",
+  "description": "Rewind-compact plugin bundle for the DeepSeek Harness: rewind the conversation to a chosen turn boundary and summarize one side as a five-field scaffold.",
   "engines": {
     "dsh": ">=0.2.1-rc.2 <0.3.0-0"
   },
