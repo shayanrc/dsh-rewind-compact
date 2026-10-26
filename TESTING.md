@@ -230,11 +230,14 @@ verified on a green boot (log shows `[rewind-compact] entry loaded`):
    as raw JSON Schema, not schemastery.
 2. **`inject` hard-required `compaction` and `logger`**, which the web
    profile does not provide, blocking activation. Fixed: inject only
-   `tools, commands, skills, agents`; `compaction`/`logger`/`sessionProjections`
-   are probed via `ctx.get()` in try/catch (Cordis throws on uninjected
-   property access, so `?.` cannot guard it). Without a compaction service
-   the plugin degrades to scaffold-only summaries and logs a warning — on the
-   web template, `ctx.compaction` does not exist at all.
+   `tools, agents`; `commands`/`skills` (optional surfaces, RWC-012) and
+   `compaction`/`logger`/`sessionProjections` are probed via `ctx.get()` in
+   try/catch (Cordis throws on uninjected property access, so `?.` cannot
+   guard it). A missing command/skill service logs one skip line and only that
+   surface is absent — sdk-minimal provides neither and still loads the tool.
+   Without a compaction service the plugin degrades to scaffold-only summaries
+   and logs a warning — on the web template, `ctx.compaction` does not exist at
+   all.
 3. **`pnpm add file:` does not re-copy changed files** ("Already up to
    date"). Refresh the profile's copy with remove + add:
    `dsh plugin --profile <name> remove dsh-rewind-compact && dsh plugin --profile <name> add --offline "file:<repo>"`.
