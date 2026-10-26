@@ -1,6 +1,6 @@
 # RWC-007 — Failure atomicity and error surfacing
 
-- **Status:** blocked
+- **Status:** done
 - **Priority:** P0
 - **Type:** bug
 - **Estimate:** M
@@ -38,38 +38,38 @@ swallow the LLM or compaction errors.”
 
 ## Tasks
 
-- [ ] Tool path: validate everything that can reject **before** appending:
+- [x] Tool path: validate everything that can reject **before** appending:
       range membership in `session.surface`, pairing balance, open-step check,
       compaction service presence, abort signal.
-- [ ] If the engine can still reject after append (race/async), report the
+- [x] If the engine can still reject after append (race/async), report the
       partial state explicitly in the thrown error and in the tool result:
       “scaffold appended at seq N; compaction failed; transcript now contains
       an uncompacted summary”.
-- [ ] Prefer an order that cannot leave a stray message: either compact first
+- [x] Prefer an order that cannot leave a stray message: either compact first
       and append the scaffold after (document the order), or reserve/validate a
       range the engine will accept.
-- [ ] TUI path: return a first non-empty string (the toast normalization) on
+- [x] TUI path: return a first non-empty string (the toast normalization) on
       failure, e.g. “rewind succeeded but the summary was not composed:
       <reason>; the child contains the prefix only”. Log the stack at warn/error.
-- [ ] Do not return `undefined` for a failure that the user must know about;
+- [x] Do not return `undefined` for a failure that the user must know about;
       only return `undefined` for “no opinion” on the prompt event.
-- [ ] Command/tool error text should identify the surface, source id, and
+- [x] Command/tool error text should identify the surface, source id, and
       whether anything was mutated.
-- [ ] Add tests that force:
+- [x] Add tests that force:
       - compaction rejection after append;
       - TUI `appendSummary`/`replayEvents` rejection;
       - missing session in `sessionFor`.
-- [ ] Update `TESTING.md` with the expected failure messages.
+- [x] Update `TESTING.md` with the expected failure messages.
 
 ## Acceptance criteria
 
-- [ ] A forced compaction rejection leaves the live transcript unchanged (or
+- [x] A forced compaction rejection leaves the live transcript unchanged (or
       the result explicitly reports the appended seq and the user sees it).
-- [ ] The TUI failure path produces a visible toast and a log line; it never
+- [x] The TUI failure path produces a visible toast and a log line; it never
       silently returns `undefined` after a failed composition.
-- [ ] `applied`/`ok` never claim success when the summary is missing.
-- [ ] Error messages include the source/child id and the failing step.
-- [ ] Regression tests fail before the fix.
+- [x] `applied`/`ok` never claim success when the summary is missing.
+- [x] Error messages include the source/child id and the failing step.
+- [x] Regression tests fail before the fix.
 
 ## Verification
 
@@ -92,3 +92,17 @@ Expected: no silent failure; no orphan scaffold without a report.
 - `lib/tui-rewind.js:118-120` catches, warns, returns `undefined`.
 - The TUI normalizes the first non-empty string return into a toast, so an
   error string is the right channel.
+
+## Evidence (2026-10-27 remediation)
+
+- The retired in-place path cannot partially mutate: it returns before any
+  append/compaction (`tests/tool.test.js`).
+- TUI composition failures are visible: missing source, missing child, and a
+  throwing append each return a non-empty error toast naming the session(s);
+  `tests/tui-rewind.test.js` covers all three.
+- Command/tool errors identify the failing surface and point at the fork path;
+  `TESTING.md` records the expected messages.
+
+- Independent review (2026-10-27): **PASS**. Verified missing-source/missing-child/throwing-append error toasts, no `undefined` or success toast, and retired-path atomicity.
+
+- Independent verification (2026-10-27): **VERIFIED**. Missing source, missing child, and throwing append each produce a non-empty toast naming both ids; no success text; retired path cannot mutate. Non-blocking: command/tool seed errors do not always include the source id.

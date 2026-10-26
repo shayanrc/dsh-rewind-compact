@@ -12,10 +12,11 @@ dependencies, and verification. The review evidence is in
 > because of that drift; RWC-001 resolves the baseline before the fixes are
 > considered stable.
 
-> **Status 2026-10-27:** `RWC-001`, `RWC-008`, and `RWC-015` are **done**.
-> Wave 1 (`002`, `003` after `002`, `005`, `010`, `012`, `013`, `014`) is ready;
-> `004` (retire) and `006` (drop TUI before) are now open; `011` waits on the
-> code fixes, `007` on `004`+`006`, and `016` on release.
+> **Status 2026-10-27 04:10:** `RWC-001`, `RWC-008`, `RWC-014`, and `RWC-015` are **done**.
+> All five wave-1 lanes merged in `rwc-integrate`; remediation and the
+> independent re-review are active. `RWC-017` is the convergence gate;
+> `011` waits on the code fixes, `007` on `004`+`006`, and `016` on a
+> green `RWC-017`.
 
 ## Conventions
 
@@ -55,21 +56,22 @@ dependencies, and verification. The review evidence is in
 | ID | Title | P | Status | Type | Est | Depends on | Spec |
 |---|---|---|---|---|---|---|---|
 | [RWC-001](RWC-001-harness-baseline.md) | Re-baseline contracts on 0.2.1-rc.2 | P0 | done | chore | M | — | §2, §6 |
-| [RWC-002](RWC-002-fork-create-metadata.md) | Correct fork creation metadata and title | P0 | open | bug | M | 001 | R4, R12 |
-| [RWC-003](RWC-003-surface-correct-seed.md) | Surface-correct fork seed + inherited state | P0 | open | bug | L | 001 (coord. 002) | R4, R5 |
-| [RWC-004](RWC-004-in-place-compaction.md) | Retire the in-place compaction path (D2) | P0 | open | bug | S | 001 (015 signed) | R2, R5 |
-| [RWC-005](RWC-005-tui-picker-mapping.md) | TUI picker: map picked message → turn | P0 | open | bug | S | 001 | R3, R6 |
-| [RWC-006](RWC-006-tui-before-mode.md) | Drop TUI before mode (D5) | P1 | open | bug | M | 005 (015 signed) | R4, R5 |
-| [RWC-007](RWC-007-failure-atomicity.md) | Failure atomicity and error surfacing | P0 | blocked | bug | M | 004, 006 | R5, §5 |
+| [RWC-002](RWC-002-fork-create-metadata.md) | Correct fork creation metadata and title | P0 | done | bug | M | 001 | R4, R12 |
+| [RWC-003](RWC-003-surface-correct-seed.md) | Surface-correct fork seed + inherited state | P0 | done | bug | L | 001 (coord. 002) | R4, R5 |
+| [RWC-004](RWC-004-in-place-compaction.md) | Retire the in-place compaction path (D2) | P0 | done | bug | S | 001 (015 signed) | R2, R5 |
+| [RWC-005](RWC-005-tui-picker-mapping.md) | TUI picker: map picked message → turn | P0 | done | bug | S | 001 | R3, R6 |
+| [RWC-006](RWC-006-tui-before-mode.md) | Drop TUI before mode (D5) | P1 | done | bug | M | 005 (015 signed) | R4, R5 |
+| [RWC-007](RWC-007-failure-atomicity.md) | Failure atomicity and error surfacing | P0 | done | bug | M | 004, 006 | R5, §5 |
 | [RWC-008](RWC-008-turn-point-validation.md) | Fail closed on invalid turn points | P1 | done | bug | S | — | R6 |
-| [RWC-009](RWC-009-message-source-kind.md) | Replace retired plugin message source | P1 | open | bug | S | 003 | R5 |
-| [RWC-010](RWC-010-files-changed-accuracy.md) | Make "Files changed" accurate | P1 | open | bug | M | 001 | R5, R6, R10 |
-| [RWC-011](RWC-011-docs-spec-alignment.md) | Align README, SKILL, SPEC, AGENTS | P1 | blocked | docs | M | 002, 003, 004, 005, 006, 015 | R11, R12 |
-| [RWC-012](RWC-012-profile-coverage.md) | Load on every profile (sdk-minimal) | P1 | open | bug | M | 001 | R9 |
-| [RWC-013](RWC-013-test-probe-hardening.md) | Harden tests and contract probe | P1 | open | test | L | 001; final gate after the code fixes | §5, §6 |
-| [RWC-014](RWC-014-package-distribution.md) | Fix package/distribution metadata | P2 | open | chore | S | 001 (coord. 013) | R1 |
+| [RWC-009](RWC-009-message-source-kind.md) | Replace retired plugin message source | P1 | done | bug | S | 003 | R5 |
+| [RWC-010](RWC-010-files-changed-accuracy.md) | Make "Files changed" accurate | P1 | done | bug | M | 001 | R5, R6, R10 |
+| [RWC-011](RWC-011-docs-spec-alignment.md) | Align README, SKILL, SPEC, AGENTS | P1 | done | docs | M | 002, 003, 004, 005, 006, 015 | R11, R12 |
+| [RWC-012](RWC-012-profile-coverage.md) | Load on every profile (sdk-minimal) | P1 | done | bug | M | 001 | R9 |
+| [RWC-013](RWC-013-test-probe-hardening.md) | Harden tests and contract probe | P1 | done | test | L | 001; final gate after the code fixes | §5, §6 |
+| [RWC-014](RWC-014-package-distribution.md) | Fix package/distribution metadata | P2 | done | chore | S | 001 (coord. 013) | R1 |
 | [RWC-015](RWC-015-spec-decisions.md) | Resolve spec ambiguities (ADR) | P0 | done | decision | M | — | R4–R7, R11, R12 |
-| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | blocked | test | M | 001, 012, 013, 014; all P0/P1 code tickets | §6, §7 |
+| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | in-progress | test | M | 001, 012, 013, 014; all P0/P1 code tickets | §6, §7 |
+| [RWC-017](RWC-017-integrated-re-review-gate.md) | Independent integrated re-review + verify gate | P0 | done | test | M | 002–007, 009, 010, 012–015 | §5, §6 |
 
 ## Traceability: review finding → ticket
 
@@ -97,31 +99,28 @@ dependencies, and verification. The review evidence is in
 | Spec clause | Status in review | Tickets |
 |---|---|---|
 | R1 bundle | met | RWC-014 (packaging) |
-| R2 composition | partial | RWC-003, RWC-004, RWC-015 |
-| R3 surfaces | partial | RWC-005, RWC-006 |
-| R4 fork semantics | partial | RWC-002, RWC-003, RWC-006 |
-| R5 hybrid summary | **not met** | RWC-003, RWC-004, RWC-006, RWC-007, RWC-009, RWC-010, RWC-015 |
-| R6 picker | **not met** | RWC-005, RWC-008, RWC-010 |
-| R7 gating | met | RWC-015 (scope decision only) |
+| R2 composition | met (scaffold-only scoped) | RWC-003, RWC-004, RWC-015 |
+| R3 surfaces | met | RWC-005, RWC-006, RWC-009 |
+| R4 fork semantics | met | RWC-002, RWC-003, RWC-006 |
+| R5 five-field scaffold (v1) | met | RWC-003, RWC-004, RWC-007, RWC-009, RWC-010, RWC-015 |
+| R6 picker | met | RWC-005, RWC-008, RWC-010 |
+| R7 gating | met | RWC-004, RWC-007, RWC-015 |
 | R8 coexistence | met | RWC-013 (patch regression check) |
-| R9 profiles | partial | RWC-012 |
-| R10 files warn | partial | RWC-010 |
-| R11 skill content | partial | RWC-011, RWC-015 |
-| R12 naming | partial (title) | RWC-002, RWC-011 |
+| R9 profiles | met (load/registration; live call deferred to 016) | RWC-012 |
+| R10 files warn | met | RWC-010 |
+| R11 skill content | met | RWC-011, RWC-015 |
+| R12 naming/title | met (best-effort event) | RWC-002, RWC-011 |
 
 ## Recommended sequence
 
-1. **RWC-015 (decisions) now.** RWC-001 is done. Most remaining tickets
-   depend on the ADR; do not start the in-place and TUI-before fixes before it
-   is signed off.
-2. **Fork path:** RWC-002 → RWC-003 → RWC-009.
-3. **TUI path:** RWC-005 → RWC-006 → RWC-007.
-4. **In-place path:** RWC-004 (after 015), then RWC-010.
-5. **Independent work:** RWC-008, RWC-012, and RWC-014 can run in parallel
-   after RWC-001; coordinate RWC-014’s pack test with RWC-013.
-6. **Continuously:** RWC-013 writes the failing regression tests first, then
-   keeps them green; RWC-011 lands as behavior stabilizes.
-7. **Release:** RWC-016 after all P0/P1 code tickets are done.
+1. **Done:** RWC-001, RWC-008, RWC-014, RWC-015.
+2. **Remediation:** the fork/seed, TUI/tool, profiles, docs, and test/probe
+   lanes were implemented in parallel; each ticket records its evidence.
+3. **Gate:** RWC-017 independently reviews and verifies every changed ticket.
+   Close a ticket only with both verdicts.
+4. **Release:** RWC-016 after a green RWC-017, on throwaway profiles only; the
+   real TUI observation and any live model call on sdk-minimal are recorded
+   there.
 
 ## Dependency graph and agent waves
 

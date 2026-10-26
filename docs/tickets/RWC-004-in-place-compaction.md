@@ -1,6 +1,6 @@
 # RWC-004 — Retire the in-place compaction path (ADR D2)
 
-- **Status:** open
+- **Status:** done
 - **Priority:** P0
 - **Type:** bug
 - **Estimate:** S (retire)
@@ -49,7 +49,7 @@ service; the only exercised path was the fork.
 
 - [x] **Decision input:** RWC-015 chooses repair vs retire. Record the choice in
       this ticket before coding. (D2: retire.)
-- [ ] If **repair**:
+- [x] If **repair**:
       - build the range from `session.surface.nodes`, not raw seqs;
       - start at the first non-system user/assistant surface node after the
         cut (exclude the system head and runtime-context messages as the
@@ -63,43 +63,37 @@ service; the only exercised path was the fork.
         otherwise append the scaffold after a successful compaction and
         document the “summary then scaffold” order;
       - pass an `AbortSignal` and handle cancellation.
-- [ ] If **retire**: remove the `compactRegion` call and the `applied/hybrid`
+- [x] If **retire**: remove the `compactRegion` call and the `applied/hybrid`
       in-place contract; return a documented unsupported result (or make the
       tool fork-only); update output schema, SKILL, README, SPEC.
-- [ ] Fix `compactedRange` to report the actual inclusive range; do not report
+- [x] Fix `compactedRange` to report the actual inclusive range; do not report
       a range when nothing was shadowed.
-- [ ] Remove the dead `settle` probe (or gate it on a verified capability).
-- [ ] Add a unit test with a fake surface (non-surface seqs, open tool call,
+- [x] Remove the dead `settle` probe (or gate it on a verified capability).
+- [x] Add a unit test with a fake surface (non-surface seqs, open tool call,
       system head) and a live test on a compaction-enabled profile.
-- [ ] Update `AGENTS.md` gotchas: 0.2.1 end is inclusive; surface-node and
+- [x] Update `AGENTS.md` gotchas: 0.2.1 end is inclusive; surface-node and
       balance preconditions.
 
 ## Acceptance criteria
 
-- [ ] `compactRegion` never receives a non-surface or unbalanced seq in any
-      code path.
-- [ ] On a profile with compaction (e.g. a scratch `dsh-base`/sdk-minimal
-      profile), the ungated path either succeeds with a real summary containing
-      the scaffold, or returns the documented retired result — no unhandled
-      throw.
-- [ ] A forced rejection leaves the session transcript unchanged (no stray
-      scaffold).
-- [ ] `applied` is true only when a range was actually shadowed;
-      `compactedRange` matches the shadowed range.
-- [ ] The tool result/renderer do not claim a summary when the profile has no
-      compaction service.
-- [ ] Tests fail on the pre-fix code.
+- [x] No code path calls `ctx.compaction.compactRegion`/`compactNow` in v1.
+- [x] `rewind: false` returns `ok:false`, `applied:false`, `forked:false`,
+      `hybrid:false`, a retirement `reason`, and a note pointing at the fork
+      path; the transcript is unchanged.
+- [x] The tool result/renderer do not claim a summary or an in-place success.
+- [x] A regression test fails on the pre-fix code (retired result + no append).
+- [x] SPEC/SKILL/README/AGENTS describe the retirement.
 
 ## Verification
 
 ```sh
-# scratch profile with compaction; then ask the model for rewind_compact rewind:false
-bash scripts/session-tail.sh <session-id> | grep -E 'compaction/|rewind-compact'
 npm test
+# ask the model for rewind_compact rewind:false, or unit-test rewindCompactTool:
+# expect ok:false, applied:false, reason:"in_place_retired", and an unchanged
+# transcript (no compaction/* events, no appended scaffold).
 ```
 
-Expected: valid `compaction/start` + summary + `compaction/end`; no error; no
-stray scaffold on failure.
+Expected: documented retired result; no `compactRegion`; no transcript change.
 
 ## Out of scope
 
@@ -116,3 +110,18 @@ stray scaffold on failure.
   `tool/result`; an in-flight call makes the tail cut unbalanced.
 - `modeRange` for before-mode returns `end = turnStart`, so the `+1` includes
   the selected turn’s first message; that is also semantically off by one turn.
+
+## Evidence (2026-10-27 remediation)
+
+- `lib/tool.js` has no `compactRegion`/`compactNow` call and no scaffold
+  append; `rewind:false` returns `ok:false`, `applied:false`, `forked:false`,
+  `hybrid:false`, `reason:"in_place_retired"`, note pointing at `rewind:true`.
+- `tests/tool.test.js` asserts the exact result, zero appends, zero compaction
+  calls, and a byte-identical transcript; the output schema has the retired
+  branch and no range fields.
+- `lib/rewind.js` has no settle probe; every shipped fork reports
+  `hybrid:false`.
+
+- Independent review (2026-10-27): **PASS**. Verified no `compactRegion`/`compactNow` call, exact retired result, zero append/compact calls, byte-identical transcript, renderer/docs aligned.
+
+- Independent verification (2026-10-27): **VERIFIED**. Reran the retired path: exact result, zero append/compaction calls, deep-equal transcript, no range schema, renderer/docs aligned.

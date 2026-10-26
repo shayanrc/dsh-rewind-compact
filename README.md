@@ -1,12 +1,12 @@
 # dsh-rewind-compact
 
-Plugin bundle for the DeepSeek Harness (`dsh`): rewind the conversation to a chosen completed-turn boundary and compact one side of that boundary into a hybrid (scaffold + LLM prose) summary. The other side survives verbatim. The pre-rewind session always remains resumable by id — the discarded side is never lost.
+Plugin bundle for the DeepSeek Harness (`dsh`): rewind the conversation to a chosen completed-turn boundary and summarize one side of that boundary as the mechanical **five-field scaffold** — the v1 summary; LLM prose is deferred and not shipped. The other side survives verbatim. The pre-rewind session always remains resumable by id — the discarded side is never lost.
 
 ## Surfaces
 
 - TUI interactive picker — the native Esc-Esc rewind overlay gains the after confirm-pane mode **Rewind + compact after** (files-changed warning in the description). Before mode is not offered on the TUI (ADR D5); it remains on the `/rewind-compact` command and the tool. Requires the `session.rewind.intercept` grant (default deny).
 - TUI command `/rewind-compact [turn] [after|before]` — fast path; no arguments points at the picker.
-- Model-invoked tool `rewind_compact(point, mode, rewind)` — compaction ungated; rewind requires user approval (fails closed headless).
+- Model-invoked tool `rewind_compact(point, mode, rewind)` — `rewind: true` forks a new session and requires direct human authority in the current turn (fails closed headless/sdk/goal-round). `rewind: false` is retired in v1: it returns a documented unsupported result and never touches the transcript.
 - Skill `rewind-compact` — when to propose, tool rules, summary format, post-fork etiquette.
 
 ## Install
@@ -55,7 +55,7 @@ options, `compactRegion`) against **this checkout's** `lib/`; see
 
 | Surface | Where it works |
 |---|---|
-| Esc-Esc rewind picker modes | TUI profile (decision-event seam `tui/rewind-prompt` / `tui/rewind-done`; needs the `session.rewind.intercept` grant — see TESTING.md) |
+| Esc-Esc rewind picker (after mode) | TUI profile (decision-event seam `tui/rewind-prompt` / `tui/rewind-done`; needs the `session.rewind.intercept` grant — see TESTING.md) |
 | `/rewind-compact` command | profiles providing the `commands` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |
 | `rewind_compact` tool | every profile that loads the bundle (model-invoked) |
 | `rewind-compact` skill | profiles providing the `skills` service (base-backed: web, TUI, headless, SDK); else skipped with one log line |
@@ -65,26 +65,27 @@ ships neither `commands` nor `skills`, so there the bundle still loads and
 registers the tool (the TUI decision subscriptions are inert without a TUI),
 logging one skip line per absent surface.
 
-Headless/sdk: the tool's compact path works ungated; the rewind path fails closed (no direct human input in a goal-round turn).
+Headless/sdk: the rewind path fails closed (no direct human input in a goal-round turn); the retired in-place path returns `applied: false` and changes nothing.
 
 ## v1 limitations
 
-- No file revert: the plugin reports which files changed after the boundary but never restores them (deferred v2).
-- Profiles without a compaction service: the in-place compact path is a no-op and reports `applied: false` with a `note` (the fork path still summarizes, scaffold-only).
-- Headless/sdk approval for rewind fails closed.
-- Forked-session title `<original> (rewound)` is passed as a legacy create option; 0.2.1's `CreateAgentOptions` has no `title`, so the child keeps the default title (baseline deviation tracked with the fork-metadata work).
-- The forked child session is stored under the `_no-cwd` session bucket instead of the source's workspace bucket: 0.2.1 reads `cwd` from `meta.cwd` and the current fork call still passes the pre-0.2.1 top-level alias. The child is complete and resumable, just ungrouped in the sidebar.
-- **Verified end-to-end** in a real browser against the web profile: `scripts/e2e-web-test.py` (see TESTING.md) — new session → two turns → `/rewind-compact` → answer both dialogs → completion message, with the child log checked on disk for the seeded history plus the five-field scaffold.
+- **Scaffold-only summaries.** Every shipped path delivers the mechanical five-field scaffold as the summary and reports `hybrid: false`; LLM prose through `ctx.compaction` is a v2 target, not shipped (ADR RWC-015 D2/D3).
+- **In-place compaction is retired.** `rewind: false` (or omitted) returns `ok: false`, `applied: false`, `reason: "in_place_retired"`, and a note pointing at the fork path. It never appends, never calls `compactRegion`, and leaves the transcript byte-identical — this is not a working compact path.
+- **Rewind requires direct human authority.** Through the tool it requires a user-sourced message in the current open turn and fails closed without a human (`REWIND_COMPACT_APPROVAL_REQUIRED`). There is no plugin-authored decision prompt; if the model is unsure, it asks the user in conversation before calling.
+- **TUI offers after mode only.** Before mode remains on the `/rewind-compact` command and the tool (ADR D5); a stale before-mode done event gets an explicit error toast.
+- **No file revert.** The plugin reports which files changed after the boundary but never restores them (deferred v2).
+- **Fork metadata and title.** The child is created with `meta {cwd, parentSession, isSeeded, agentPreset}` plus `inheritedEventCount`, so an absolute source cwd groups it under the source workspace bucket. Its title is a best-effort `session/title` event `<source title> (rewound)`, appended in the child's `setup` before publication; an untitled source or a failed append leaves the default title. No create-time `title` option is used.
+- **Verified scope.** The browser E2E (`scripts/e2e-web-test.py`) covers the web `/rewind-compact` command path only — not the tool, the TUI decision events, or the skill surface (see TESTING.md).
 
 ## Harness seams used
 
-- **Compaction** — `ctx.compaction.compactRegion(start, end, agent, signal)` (CompactionEngine contract, `dsh-compaction-basic`). Its signature takes no instructions argument, so the five-field scaffold is delivered **inside the compacted range** as its final message: the summarizer (`summarizeWithLlm`) appends its own instruction and condenses the range, preserving the scaffold's facts into the prose (hybrid summary, R5). Forked children have no open turn, so the fork path ships the five-field scaffold-only summary and reports `hybrid: false`; the hybrid `compactRegion` path is the tool's in-place compaction on the live session. The pre-rewind session is never appended to or truncated.
-- **Rewind/fork** — the TUI's fork-at-boundary recipe (`@deepseek-harness-tui/dsh-tui/lib/types/dsh-adapter/channel/session-rewind.js`): cancel agent → wait `turn/end` → settleCompaction → walk back to enclosing `turn/start`, cut at `turnStart.seq - 1` → `agents.create({sessionId: SessionId(randomUUID()), seed, meta: {parentSession, cwd, isSeeded: true, agentPreset?}, inheritedEventCount: seed.length, setup})`. Never `sessions.fork()`; never mutate the pre-rewind session. (The current `lib/rewind.js` still passes the pre-0.2.1 `inheritedCount`/top-level `parentSession`/`cwd` aliases, which 0.2.1 ignores — the probe reports that as a documented baseline deviation.)
-- **Tool registration** — `ctx.tools.register(defineTool({name, description, parameters, output: {schema, render}, execute, presentCall}))`, with `defineTool` from `@deepseek-ai/dsh-tools`: `parameters` is a per-property map and `output.schema` is raw JSON Schema in the enforced subset (the `dsh-tool-goal` dialect).
+- **Compaction (v2 seam only)** — `ctx.compaction.compactRegion(start, end, agent, signal)` (CompactionEngine contract, `dsh-compaction-basic`) is the only permitted seam for a future LLM-generated summary. v1 never calls it: the in-place path is retired (ADR D2) and forked children have no open turn, so every shipped summary is the five-field scaffold (`hybrid: false`). If hybrid returns, the scaffold must be delivered inside a closed, balanced range as its final message; the four-argument signature takes no instructions argument. The pre-rewind session is never appended to or truncated.
+- **Rewind/fork** — the TUI's fork-at-boundary recipe (`@deepseek-harness-tui/dsh-tui/lib/types/dsh-adapter/channel/session-rewind.js`): cancel agent → wait `turn/end` → walk back to enclosing `turn/start`, cut at `turnStart.seq - 1` → `agents.create({sessionId: SessionId(randomUUID()), seed, meta: {cwd, parentSession, isSeeded: true, agentPreset?}, inheritedEventCount: seed.length, setup})`. Never `sessions.fork()`; never mutate the pre-rewind session. Create-time title is not an option in 0.2.1: `setup` appends a best-effort `session/title` event `<source title> (rewound)` (skipped when the source has no folded title).
+- **Tool registration** — `ctx.tools.register(defineTool({name, description, parameters, output: {schema, render}, execute, presentCall}))`, with `defineTool` from `@deepseek-ai/dsh-tools`: `parameters` is a **per-property map** (`{type, required?, description?, enum?}`) and `output.schema` is **raw JSON Schema** in the harness's enforced subset (`required: true` inside each property, closed `additionalProperties`, unions via `oneOf`; the `dsh-tool-goal` dialect).
 - **Command registration** — `ctx.commands.register({name: 'rewind-compact', description, handler})`; handler receives `{commandId, agent, rawInput, attachments, signal}` and returns `{kind: 'success'|'error', text, sourceEventSeq?}` (the `dsh-command-compact` shape; the adapter renders the leading slash).
-- **Skill registration** — `ctx.skills.register({name, description, invocation: {modelInvocable, userInvocable}, source, content, path})` (`dsh-skill` runtime seam; the load-time validator requires string `source`/`provider`/`content`, so the SKILL.md body ships inline as `content`).
-- **TUI picker seam** — decision events via plain `ctx.on`: `tui/rewind-prompt` (payload `{text, seq, sessionId, cwd}` where `seq` is the picked **message** seq; answer `{modes: [{id, label, description}]}` — rendered in the confirm pane's choice list) and `tui/rewind-done` (post-fork payload carries `mode`, `boundarySeq` = the inclusive cut `turnStart.seq - 1`, `sourceSessionId`, `childSessionId`; the bundle replays and compacts the discarded side in the child and returns the toast string). Subscriptions are D-7-gated on the `session.rewind.intercept` grant (default deny — a denied subscription is a warned no-op; see TESTING.md for granting).
-- **Rewind gating** — direct-human authority check (a user-sourced `user/message` inside the open turn, via `ctx.sessionProjections.stateOf(agent.session, 'turnBoundary')`), the same authority pattern as `dsh-tool-goal`'s `requireDirectHuman`.
+- **Skill registration** — `ctx.skills.register({name, description, invocation: {modelInvocable, userInvocable}, source, content, path})` (`dsh-skill` runtime seam). Registration requires the SKILL.md body **inline as `content`** plus a string `source`; `provider` is part of the validated definition (the registry applies its default when omitted). A `path` alone is display metadata and fails the load-time validator, so the body ships inline.
+- **TUI picker seam** — decision events via plain `ctx.on`: `tui/rewind-prompt` (payload `{text, seq, sessionId, cwd}` where `seq` is the picked **message** seq; answer `{modes: [{id, label, description}]}` — after mode only, rendered in the confirm pane's choice list) and `tui/rewind-done` (post-fork payload carries `mode`, `boundarySeq` = the inclusive cut `turnStart.seq - 1`, `sourceSessionId`, `childSessionId`; for after mode the bundle appends the five-field scaffold of the discarded tail to the TUI-forked child and returns the toast string; a failed append returns an error toast naming the prefix-only child; a before-mode done event returns an explicit "not available on the TUI" toast). Subscriptions are D-7-gated on the `session.rewind.intercept` grant (default deny — a denied subscription is a warned no-op; see TESTING.md for granting).
+- **Rewind gating** — direct-human authority check (a user-sourced `user/message` inside the open turn, via `ctx.sessionProjections.stateOf(agent.session, 'turnBoundary')`), the same authority pattern as `dsh-tool-goal`'s `requireDirectHuman`. There is no plugin-authored decision prompt; if the model is unsure, it asks the user in conversation before calling.
 - **Errors** — typed `HarnessError(message, code)` from `@deepseek-ai/dsh-llm`.
 
 ## Layout
@@ -92,7 +93,7 @@ Headless/sdk: the tool's compact path works ungated; the rewind path fails close
 - package.json — bundle manifest
 - cordis.patch.yml — patch layer
 - lib/ — implementation (index.js entry; events.js accessors; scaffold.js, seed.js, rewind.js, tool.js, command.js, tui-rewind.js, errors.js)
-- tests/ — node:test unit tests (scaffold, seed envelopes)
+- tests/ — node:test unit tests (scaffold, seed envelopes, create metadata, events, tool, TUI decisions)
 - skill/rewind-compact/SKILL.md — the skill
 - SPEC.md — the approved spec
 

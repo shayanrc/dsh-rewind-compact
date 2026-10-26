@@ -1,6 +1,6 @@
 # RWC-003 — Surface-correct fork seed and inherited state
 
-- **Status:** open
+- **Status:** done
 - **Priority:** P0
 - **Type:** bug
 - **Estimate:** L
@@ -34,46 +34,46 @@ seed semantically faithful, not just validator-valid.
 
 ## Tasks
 
-- [ ] Record the chosen strategy in the ticket/ADR:
+- [x] Record the chosen strategy in the ticket/ADR:
       **A)** raw prefix slice like the TUI, seqs unchanged, keeping
       replacement `surfaceOp`s and their source references, then append the
       summary as a live child event; or
       **B)** fold the source surface (drop shadowed originals, keep replacement
       summaries) and build a renumbered message seed.
       Prefer A for after-mode; B only if before-mode needs a composed seed.
-- [ ] Add `developer/message` to the surface type set; use the harness’s
+- [x] Add `developer/message` to the surface type set; use the harness’s
       exported `isSurfaceEligibleType`/surface types rather than a local list
       where possible.
-- [ ] If renumbering, remap any `surfaceOp.startSeq/endSeq` and
+- [x] If renumbering, remap any `surfaceOp.startSeq/endSeq` and
       `sourceEventSeqs`; do not strip valid references. If keeping seqs, stop
       renumbering.
-- [ ] Preserve or replay inherited policy facts. For a cut that holds policy
+- [x] Preserve or replay inherited policy facts. For a cut that holds policy
       but no conversation, copy the latest facts into the child (as the TUI
       does with `latestPolicyFacts`/`replayPolicyFacts`) or keep them in the
       seed.
-- [ ] Preserve turn markers so future `/rewind-compact` lists inherited turns;
+- [x] Preserve turn markers so future `/rewind-compact` lists inherited turns;
       preserve `agentPreset` (also in RWC-002).
-- [ ] Keep the after-mode summary last and the before-mode summary first; the
+- [x] Keep the after-mode summary last and the before-mode summary first; the
       summary remains one `user/message` built by `summaryMessage()`.
-- [ ] Keep the source transcript unmutated and deep-copy every seed value.
-- [ ] Add fixtures/tests:
+- [x] Keep the source transcript unmutated and deep-copy every seed value.
+- [x] Add fixtures/tests:
       a prior-compaction transcript; a developer message; policy facts;
       multiple completed turns; a before/after pair.
-- [ ] Update `AGENTS.md` seed invariant and `docs/HARNESS-CONTRACTS.md` §7–8.
+- [x] Update `AGENTS.md` seed invariant and `docs/HARNESS-CONTRACTS.md` §7–8.
 
 ## Acceptance criteria
 
-- [ ] Seeding from a transcript with a prior replacement contains the
+- [x] Seeding from a transcript with a prior replacement contains the
       replacement summary and **no** shadowed originals.
-- [ ] A developer message in the kept side appears in the child.
-- [ ] Policy facts from the kept prefix are present or replayed before the
+- [x] A developer message in the kept side appears in the child.
+- [x] Policy facts from the kept prefix are present or replayed before the
       child’s first turn; the child does not silently reset permissions.
-- [ ] Turn markers from the kept prefix are present; a `/rewind-compact` in the
+- [x] Turn markers from the kept prefix are present; a `/rewind-compact` in the
       child can list at least the inherited completed turns as the harness
       allows.
-- [ ] After-mode seed ends with the summary; before-mode seed starts with it.
-- [ ] The source session’s events are byte-for-byte unchanged.
-- [ ] All new fixtures pass the real seed validator on 0.2.1.
+- [x] After-mode seed ends with the summary; before-mode seed starts with it.
+- [x] The source session’s events are byte-for-byte unchanged.
+- [x] All new fixtures pass the real seed validator on 0.2.1.
 
 ## Verification
 
@@ -103,3 +103,29 @@ markers present.
 - The TUI’s `sliceLiveSessionSeed` slices the raw prefix and preserves
   envelopes; the child’s `foldSurface` then applies replacements. That is the
   reference behavior.
+
+## Evidence (2026-10-27 remediation)
+
+- `lib/seed.js` after mode keeps the raw prefix (markers/references intact)
+  and appends one summary; before mode folds the current tail, renumbers, and
+  prepends the latest prefix policy baseline
+  (`latestPrefixPolicyFacts` -> summary, baseline, tail).
+- `developer/message` is in `SURFACE_TYPES`; policy facts and turn markers are
+  kept; summary uses `summaryMessage()`.
+- `tests/seed.test.js` covers replacement shadowing, developer messages,
+  policy facts, turn markers, both seed orders, deep-copy immutability, and the
+  non-contiguous rejection.
+- `scripts/check-contracts.mjs` runs a targeted before-mode fixture through
+  the real `Session.create` validator and asserts the prefix
+  `permission/preset` + `sandbox/mode` precede the kept tail:
+  `before-mode policy baseline replayed before the tail and accepted by Session.create (surface 2)`.
+- The same probe runs a replacement/shadowing fixture through the real
+  validator for both modes:
+  `replacement fixture after/before: Session.create keeps the replacement and drops the shadowed original`.
+  After-mode alignment filters the seed to surface records and compares the
+  seq-filtered surface lists, so log-only prefix records cannot skew the
+  replacement check.
+
+- Independent review (2026-10-27): **PASS**. Verified after-preserved replacement envelope, before-folded tail, prefix policy ordering, both seeds through real `Session.create`, and seq-consistent after-mode alignment. Non-blocking comments cleaned.
+
+- Independent verification (2026-10-27): **VERIFIED**. Independent deep-frozen fixture through real `Session.create`: after keeps the replacement and drops the shadowed original; before folds the tail, replays prefix policy, keeps developer/turn markers; summaries last/first; source unchanged. No missing acceptance item.

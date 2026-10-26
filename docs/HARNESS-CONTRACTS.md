@@ -107,6 +107,11 @@ Paths used below:
 
 ## 6. Compaction contract
 
+**v1 scope:** this bundle calls neither `compactRegion` nor `compactNow`; every
+surface ships the five-field scaffold alone (hybrid prose is a post-v1 target,
+RWC-015 D2/D3). The facts below are the **future/hybrid seam**, kept so a v2
+design can be checked without re-deriving them — they are not current behavior.
+
 - `ctx.compaction.compactRegion(start, end, agent, signal?)` — exactly four
   parameters, no instructions argument
   (`H/dsh-compaction/lib/types/index.d.ts:141-158`).
@@ -122,13 +127,17 @@ Paths used below:
   `source.kind = 'compact-checkpoint'`
   (`H/dsh-compaction-basic/lib/index.js:292-344,582-627`;
   `compactCheckpointSource` at `H/dsh-compaction/lib/index.js:109-121`).
-  Deliver custom facts **inside the compacted range** as its final message so
-  they survive into the prose.
+  If a hybrid summary is implemented later, deliver custom facts **inside the
+  compacted range** as its final message so they survive into the prose; v1
+  makes no such call.
 - `compactNow(agent, signal, sourceCommandId?)` is the idle-session variant: it
   requires no open turn (busy otherwise) and flushes persistence
-  (`H/dsh-compaction-basic/lib/index.js:985-1011`).
-- The web template profile has no compaction bundle — probe the service and
-  degrade to scaffold-only summaries.
+  (`H/dsh-compaction-basic/lib/index.js:985-1011`). It takes no range, so it
+  cannot compact only the discarded side — it is not a substitute for
+  `compactRegion`.
+- The web template profile has no compaction bundle; v1 already ships
+  scaffold-only summaries, so the plugin must load and behave with the service
+  absent (probe it through `ctx.get()`, never inject it).
 
 ## 7. Session/transcript contract
 
@@ -157,8 +166,9 @@ Paths used below:
   `agent-instructions`, `runtime-context`, `skill-catalog`, `time-context`).
   The validator only requires a non-empty string `kind` on a user message
   (`H/dsh-session/lib/index.js:1205`), so unknown user kinds load; consumers
-  fall through. (Legacy v3 transcripts used `{kind: 'plugin', plugin}`; this
-  bundle's `summaryMessage()` still does — a documented baseline deviation.)
+  fall through. (Legacy v3 transcripts used `{kind: 'plugin', plugin}`; that
+  wrapper is not current on 0.2.1 and is not used here — `summaryMessage()`
+  declares `kind: 'rewind-compact'` via `lib/message-source.d.ts`.)
 - Surface markers: only the five surface types carry `surfaceOp` — `'append'`
   or `{op: 'replace', startSeq, endSeq}` naming an existing span of the current
   surface (`H/dsh-session/lib/types/types.d.ts:443-466`); a replacement must
@@ -171,16 +181,17 @@ Paths used below:
   `events.slice(0, boundary + 1)` with seqs unchanged
   (`T/lib/types/dsh-adapter/compat/liveSession.js:119-145`) — so each event's
   envelope, including a replacement `surfaceOp` and its `sourceEventSeqs`,
-  travels into the child. A hand-built or renumbered seed (for example
-  `lib/seed.js`, which prepends/appends one summary record and renumbers
-  contiguously from 0) must remap `surfaceOp.startSeq`/`endSeq` and
-  `sourceEventSeqs` onto the child seqs (optional source provenance on append
-  records may instead be dropped) and must **not** flatten a replacement to
-  `append`: replaying it as an append resurrects the shadowed originals in the
-  child surface (the RWC-003 shadowing bug). `lib/seed.js` currently flattens
-  every kept surface record to `append` and drops `sourceEventSeqs` — a
-  baseline deviation owned by RWC-003; the probe reports it with `!`, not as a
-  failure. The harness's own seed validator is
+  travels into the child. A hand-built or renumbered seed must remap
+  `surfaceOp.startSeq`/`endSeq` and `sourceEventSeqs` onto the child seqs
+  (optional source provenance on append records may instead be dropped) and
+  must **not** flatten a kept replacement to `append`: replaying it as an
+  append resurrects the shadowed originals in the child surface (the RWC-003
+  shadowing bug). `lib/seed.js` follows that split: after mode copies the kept
+  prefix verbatim, so seqs and replacement markers are unchanged; before mode
+  keeps the folded current-surface tail plus the latest discarded-prefix policy
+  facts, renumbers from 0, and re-emits the kept surface nodes as `append`
+  without their `sourceEventSeqs` — correct, because a folded node is already
+  the current surface, not a replacement. The harness's own seed validator is
   `H/dsh-session/lib/index.js:1113-1142,1194-1225` and seq contiguity is
   enforced at `:1405-1406`.
 - `session.lock` is a kernel flock lease; never delete.
@@ -203,10 +214,14 @@ The TUI's own recipe (`T/lib/types/dsh-adapter/channel/session-rewind.js`):
 5. `setup` composes before publication and clears the child inbox
    (`session-rewind.js:98-101`); the pre-rewind session is never mutated —
    the discarded side stays resumable. The TUI recipe **stops after seeding**:
-   it does not compact the child. This bundle's fork path ships a
-   **scaffold-only summary** because a forked child has no open turn, and
-   `compactRegion` requires one (§6); child-side compaction is an unresolved
-   design question (RWC-004/RWC-015).
+   it does not compact the child. This bundle's fork paths also stop at the
+   scaffold: every surface ships a **scaffold-only five-field summary** and
+   returns `hybrid: false`; child-side compaction is a post-v1 target
+   (RWC-015 D3), because a forked child has no open turn and `compactRegion`
+   requires one (§6).
+
+Create metadata (`meta`, `inheritedEventCount`) and the best-effort
+`session/title` event are covered in §9; no create-time `title` option is sent.
 
 ## 9. `CreateAgentOptions` (0.2.1)
 
@@ -227,7 +242,14 @@ session creation fields, `:1909` for `agentOptions`/`setup`/`signal`/`parentAgen
   never see a half-configured world (`:92-103`).
 
 The old `inheritedCount` / top-level `parentSession` / top-level `cwd` aliases
-are **not** in the 0.2.1 options and are ignored by the factory.
+are **not** in the 0.2.1 options and are ignored by the factory. The title is
+not an option either: 0.2.1 folds it from log-only `session/title` events
+(`H/dsh-session-title/lib/index.js:177,188-195`). This bundle appends
+`{title: '<source title> (rewound)', messageSeqs: [], source: {kind: 'user'}}`
+— the explicit-rename payload at
+`H/dsh-session-title/lib/index.js:295-306` — inside `setup`, before
+publication, best-effort: an untitled source appends nothing and a failed
+append never aborts the fork (RWC-015 D7).
 
 ## 10. TUI decision events (the interactive picker seam)
 
@@ -239,7 +261,9 @@ are **not** in the 0.2.1 options and are ignored by the factory.
 - The prompt fires **before** the fork with `{text, seq, sessionId, cwd}`;
   `seq` is the picked **message** event seq, not the fork boundary
   (`T/lib/types/dsh-adapter/channel/session-actions.js:9-17`;
-  `T/lib/types/dsh-adapter/extension-events.d.ts:106-112`).
+  `T/lib/types/dsh-adapter/extension-events.d.ts:106-112`). This bundle
+  answers with its after mode only (RWC-015 D5); it maps `seq` to the enclosing
+  completed turn first, and a row in the still-open turn is ineligible.
 - `tui/rewind-done` fires after the TUI's own fork with `{text, mode,
   boundarySeq, sourceSessionId, childSessionId, sessionId, cwd}`;
   `boundarySeq` is the **inclusive source cut** the child seed ends at

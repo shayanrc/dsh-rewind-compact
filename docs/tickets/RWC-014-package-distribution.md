@@ -1,6 +1,6 @@
 # RWC-014 — Fix package and distribution metadata
 
-- **Status:** open
+- **Status:** done
 - **Priority:** P2
 - **Type:** chore
 - **Estimate:** S
@@ -26,31 +26,31 @@
 
 ## Tasks
 
-- [ ] Remove the unused `schemastery` peer (and the README mention) unless a
+- [x] Remove the unused `schemastery` peer (and the README mention) unless a
       future Config needs it.
-- [ ] Add `files`: `lib/`, `skill/`, `cordis.patch.yml`, `README.md`,
+- [x] Add `files`: `lib/`, `skill/`, `cordis.patch.yml`, `README.md`,
       `LICENSE`, `COPYING` (and `SPEC.md` if intended). Verify the entry’s
       `readFileSync` path resolves from the packed layout.
-- [ ] Decide `private`: keep true and document path/tarball-only distribution,
+- [x] Decide `private`: keep true and document path/tarball-only distribution,
       or set false and add `engines.dsh`/repository/version policy.
-- [ ] Run `npm pack --dry-run` and inspect the file list.
-- [ ] Install the packed tarball into a scratch profile and boot; verify the
+- [x] Run `npm pack --dry-run` and inspect the file list.
+- [x] Install the packed tarball into a scratch profile and boot; verify the
       skill body loads (no ENOENT) and the patch applies.
-- [ ] Add a short “Distribution” section to README (path, tarball, git caveat
+- [x] Add a short “Distribution” section to README (path, tarball, git caveat
       from the docs: `prepare` + `allowBuilds` + pinned SHA if git).
-- [ ] Optionally add a `prepack`/`test` script that fails if the skill file is
+- [x] Optionally add a `prepack`/`test` script that fails if the skill file is
       missing from the pack.
 
 ## Acceptance criteria
 
-- [ ] `npm pack --dry-run` includes `lib/**`, `skill/rewind-compact/SKILL.md`,
+- [x] `npm pack --dry-run` includes `lib/**`, `skill/rewind-compact/SKILL.md`,
       and `cordis.patch.yml`; it excludes tests/scripts if configured so.
-- [ ] A scratch profile installed from the tarball loads the entry and the
+- [x] A scratch profile installed from the tarball loads the entry and the
       skill; no missing-file error.
-- [ ] No unused peer dependencies remain.
-- [ ] The version gate is declared (`engines.dsh` or peers) and passes on the
+- [x] No unused peer dependencies remain.
+- [x] The version gate is declared (`engines.dsh` or peers) and passes on the
       supported line.
-- [ ] The distribution path and `private` decision are documented.
+- [x] The distribution path and `private` decision are documented.
 
 ## Verification
 
@@ -74,3 +74,21 @@ Expected: pack contents correct; install/boot work; skill loads.
 - `lib/index.js:29` reads the skill file at import time.
 - The docs’ distribution rules: `engines.dsh` or peer ranges gate install;
   a package without `dsh.bundle` installs as a plain dependency.
+
+## Evidence (2026-10-27 integrated review)
+
+- `npm pack --dry-run` (2026-10-27, working tree): `total files: 18`,
+  including `lib/**`, `skill/rewind-compact/SKILL.md`,
+  `cordis.patch.yml`, `README.md`, `LICENSE`, and `COPYING`; tests/scripts/docs
+  are excluded by `files`.
+- `npm pack --dry-run` output includes the 11 `lib/` modules, the skill, the
+  patch, README, LICENSE, and COPYING; tests/scripts/docs are absent.
+- Independently reviewed and verified: the tarball installs into a throwaway
+  `DSH_HOME`, `--dump-config` shows `rewind-compact/entry`, the entry loads,
+  the tool and skill register, peer ranges match `0.2.1-rc.2`, and the unused
+  `schemastery` peer is gone.
+- `README.md` documents path/tarball distribution and the git caveat.
+
+- Independent review (2026-10-27): **PASS** (no regression). Verified 18-file pack list, engines/peers, no schemastery, and ticket evidence updated with the pack output.
+
+- Independent verification (2026-10-27): **VERIFIED**. `npm pack --dry-run` 18 files; engines/peers on the 0.2.1 line; no schemastery; independent tarball install into a fresh DSH_HOME showed `rewind-compact/entry` in `--dump-config`, and the installed entry loaded tool/command/skill with no ENOENT.

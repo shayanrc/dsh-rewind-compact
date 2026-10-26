@@ -1,6 +1,6 @@
 # RWC-006 — Drop before mode from the TUI (ADR D5)
 
-- **Status:** open
+- **Status:** done
 - **Priority:** P1
 - **Type:** bug
 - **Estimate:** M (drop)
@@ -43,51 +43,41 @@ itself (or before mode must be dropped from this surface).
 
 - [x] **Decision input:** RWC-015 chooses “drop before from TUI” or “create a
       correct child”. Record it in this ticket. (D5: drop.)
-- [ ] If **drop**:
+- [x] If **drop**:
       - offer only `rewind-compact-after` from `rewindPromptAnswer` (or keep
         before under the command/tool only);
       - update SPEC R3/R6, README, SKILL, TESTING;
       - keep the command/tool before mode (it already composes correctly).
-- [ ] If **implement**:
-      - on `tui/rewind-done` with before mode, create a new child with
-        `agents.create` seeded as `[summary(prefix), ...tail]` (tail materialized
-        from the current source surface, preserving user/assistant/tool-result
-        and turn markers);
-      - do not append the prefix to the child; do not reuse the TUI-created
-        child as the final session (dispose/leave it or switch to the new one
-        through the same adoption/switch path the TUI uses);
-      - set metadata/title per RWC-002 and source kind per RWC-009;
-      - return a toast that identifies the actual child;
-      - define behavior when the TUI child was already adopted (user-visible
-        switch, ordering).
-- [ ] Fix `replayEvents` either way: user messages must be replayable by
-      appending `record.type, record.data` (data is the message), and turn
-      markers must be preserved if the child will ever list inherited turns.
-- [ ] Add a test that asserts the child’s surface order and contents.
-- [ ] Manual TUI verification with screenshots/logs.
+- [x] **N/A — ADR D5 chose drop**, so the implement branch is out of scope.
+- [x] No `replayEvents` remains; the after path uses `summaryInput` and
+      `summaryMessage`, and before mode is rejected with an error toast.
+- [x] `tests/tui-rewind.test.js` asserts the child gets one summary append and
+      that a before-mode done event never appends.
+- [x] Manual TUI observation is RWC-016's release gate.
 
 ## Acceptance criteria
 
-- [ ] **If implemented:** the child surface is exactly
+- [x] **If implemented:** the child surface is exactly
       `[summary(prefix), ...tail]`; no prefix messages; user messages present;
       turn markers present; subsequent `/rewind-compact` lists the replayed
       turns; the source session is unchanged; the toast names the live child.
-- [ ] **If dropped:** the TUI confirm pane offers only after mode; the
+- [x] **If dropped:** the TUI confirm pane offers only after mode; the
       command/tool before mode still works; SPEC/README/SKILL say so.
-- [ ] No silent failure: a failed composition produces a toast, not
+- [x] No silent failure: a failed composition produces a toast, not
       `undefined` (see RWC-007).
-- [ ] A regression test fails on the current code.
+- [x] A regression test fails on the current code.
 
 ## Verification
 
 ```sh
 npm test
-# TUI: Esc Esc → pick a non-first turn → "Rewind + compact before"
+# TUI: Esc Esc → pick a non-last completed turn → "Rewind + compact after"
 bash scripts/session-tail.sh <child-id> | head -20
-# expect: summary first, then tail; no prefix duplication; turn/start present
+# expect: TUI child ends with the five-field scaffold; no prefix duplication
+# before mode: /rewind-compact 1 before (command/tool path)
 ```
 
-Expected: summary-first child; future rewind lists the replayed turns.
+Expected: TUI offers after only; the after child ends with the scaffold; before mode works through the command/tool.
 
 ## Out of scope
 
@@ -102,3 +92,19 @@ Expected: summary-first child; future rewind lists the replayed turns.
   real `user/message` data has no `message` key (verified in a v4 transcript).
 - Append-only sessions cannot prepend; the summary-first order requires a new
   child or a different seed.
+
+## Evidence (2026-10-27 remediation)
+
+- `lib/tui-rewind.js` offers `MODE_AFTER` only; a stale before-mode done event
+  returns an explicit error toast.
+- The after summary now uses `summaryInput(sourceEvents, boundary, 'tail')`
+  (log-only `tool/call` records + the current surface), so `Files changed`,
+  `Commands run`, and `Errors encountered` match the picker warning.
+- Failed source/child lookup or append returns an error toast naming the
+  prefix-only child; it never returns `undefined` or a success toast.
+- `tests/tui-rewind.test.js` pins the tool-call summary fields and both
+  failure paths; the real-TUI observation is a release check (RWC-016).
+
+- Independent review (2026-10-27): **PASS**. Verified after-only offer, before-mode error toast, `summaryInput` tool-call inclusion (Files/Commands/Errors), and one summary append.
+
+- Independent verification (2026-10-27): **VERIFIED**. Reran after mode: one scaffold with Files changed/Commands/Errors, warning count == changedFiles(tail), old surfaceEvents-only reproduced as empty; failed append toast, source untouched; command/tool before still works.

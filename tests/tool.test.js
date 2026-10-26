@@ -157,3 +157,64 @@ test('output schema has a fork branch and a retired branch, with no in-place ran
   assert.equal(JSON.stringify(tool.output.schema).includes('"end"'), false);
   assert.match(tool.description, /retired/i);
 });
+
+// ── RWC-007/RWC-013: direct-human gate ──────────────────────────────────────
+
+function gatedHarness({ kind = 'user', roots = undefined, projection = { openTurnStartSeq: 4 }, rootSelf = false } = {}) {
+  const events = [
+    msg('session', 0, {}),
+    turnStart(1, 1), userMsg(2, 'first'), turnEnd(3, 1),
+    turnStart(4, 2), userMsg(5, 'current input', kind), turnEnd(6, 2),
+  ];
+  const created = [];
+  const agent = { session: { id: 'source-session', snapshotEvents: () => events } };
+  const agents = {
+    create: async (options) => { created.push(options); return { id: options.sessionId }; },
+  };
+  if (rootSelf) agents.roots = () => [agent];
+  else if (roots !== undefined) agents.roots = () => roots;
+  const ctx = {
+    agents,
+    get(name) {
+      if (name === 'agents') return agents;
+      if (name === 'sessionProjections') return projection === null ? undefined : { stateOf: () => projection };
+      if (name === 'logger') return quietLogger();
+      return undefined;
+    },
+  };
+  return { tool: rewindCompactTool(ctx), agent, created };
+}
+
+test('rewind:true fails closed when the open turn has no human-sourced message', async () => {
+  const { tool, agent, created } = gatedHarness({ kind: 'runtime-context' });
+  await assert.rejects(
+    () => tool.execute({ point: '2', rewind: true }, { agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(created.length, 0, 'a denied rewind must not create a child');
+});
+
+test('rewind:true fails closed for a non-root agent', async () => {
+  const { tool, agent, created } = gatedHarness({ roots: [] });
+  await assert.rejects(
+    () => tool.execute({ point: '2', rewind: true }, { agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(created.length, 0);
+});
+
+test('rewind:true fails closed when the turn-boundary projection is unavailable', async () => {
+  const { tool, agent, created } = gatedHarness({ projection: null });
+  await assert.rejects(
+    () => tool.execute({ point: '2', rewind: true }, { agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(created.length, 0);
+});
+
+test('rewind:true forks for a root agent with human input in the open turn', async () => {
+  const { tool, agent, created } = gatedHarness({ rootSelf: true });
+  const result = await tool.execute({ point: '2', rewind: true }, { agent });
+  assert.equal(result.forked, true);
+  assert.equal(created.length, 1);
+});

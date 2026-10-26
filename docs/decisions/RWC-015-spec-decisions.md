@@ -519,8 +519,8 @@ On 0.2.1, `agents.create` reads only known options and silently ignores
 
 - **A. Pass `title` to `agents.create`.** Impossible on the declared line;
   rejected.
-- **B. Append a `session/title` event after creation** (recommended), in
-  `setup` or immediately after `agents.create`, with `<source title> (rewound)`.
+- **B. Append a `session/title` event in the child's `setup`, before
+  publication** (recommended), with `<source title> (rewound)`.
   Best-effort: read the source title from folded events, skip cleanly when it
   is unknown, and never fail the fork if the append fails.
 - **C. Drop the title requirement.** Loses a small, useful lineage cue; not
@@ -548,9 +548,9 @@ otherwise succeeded.
 [RWC-011](../tickets/RWC-011-docs-spec-alignment.md); `SPEC.md` R12, R4.
 
 **Spec text to change.** R12 last bullet/acceptance → "The forked session
-receives a `session/title` event `<source title> (rewound)` after creation
-(best-effort; skipped when the source has no title). No create-time title
-option is used."
+receives a `session/title` event `<source title> (rewound)` in the child's
+`setup`, before publication (best-effort; skipped when the source has no
+title). No create-time title option is used."
 
 ---
 
@@ -768,7 +768,7 @@ evidence for R3/R6/R7. RWC-016 should record both.
 | R10 | Same conservative "Files changed" set as R5 field 1; warn only | D8 |
 | R11 item 2 | Direct-human authority, fail-closed; no prompt | D6 |
 | R11 item 3/4 | Scaffold-only summaries; title is best-effort metadata | D2, D7 |
-| R12 title | `session/title` event after creation, best-effort; no create-time option | D7 |
+| R12 title | `session/title` event in `setup` before publication, best-effort; no create-time option | D7 |
 | §6.3 | Two gates: scratch-copy dump-config + live scratch run per surface | D10 |
 | §7 | First bullet gains one concrete exception: a new throwaway profile directory under `$DSH_HOME/profiles/`, never an existing one, with `rm -rf` cleanup and evidence | D10 |
 

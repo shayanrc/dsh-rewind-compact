@@ -26,15 +26,14 @@
  *      {name, description, handler} definition returning a CommandResult, and
  *      the skill registration carries string source/content (dsh-skill's
  *      load-time validateDefinition, index.js:471-489).
- *   6. seed contract from a REAL transcript: prefer the newest session.v4
- *      fixture (v3 raw is pre-migration and only a fallback). Rebuilds both
- *      modes with the worktree lib/seed.js and runs the REAL Session.create
- *      validator. Envelope/seq/message-shape checks are failures. A kept
- *      replacement surfaceOp that the built seed flattens to "append" is a
- *      DEVIATION (the RWC-003 shadowing risk), not a failure: 0.2.1's TUI
- *      seed preserves the source envelope and the child folds it. If no
- *      fixture exercises a replacement, a synthetic one is used for that
- *      check.
+ *   6. seed contract from a REAL v4 transcript (v3 raw is pre-migration and a
+ *      failure on this line, not a fallback). Rebuilds both modes with the
+ *      worktree lib/seed.js and runs the REAL Session.create validator.
+ *      Envelope/seq/message-shape checks are failures. After mode must preserve
+ *      a kept replacement surfaceOp (sourceEventSeqs is covered by the seed unit test); before mode folds
+ *      the current tail by design. A targeted replacement fixture is always
+ *      run through Session.create for both modes, asserting the child surface
+ *      keeps the replacement and drops the shadowed original.
  *   7. surface/inject contract: only `tools`+`agents` are required;
  *      `commands`/`skills` (and compaction/logger/sessionProjections) are
  *      optional and probed. Drives the REAL entry `apply()` with a profile
@@ -43,9 +42,7 @@
  *      and every surface yields a disposer from the single effect.
  *   8. syntax + unit tests: node --check on lib/*.js and node --test tests/.
  *
- * Failures are contract breaks. Deviations (printed with `!`) are real
- * 0.2.1 facts the current implementation does not yet satisfy; they are
- * tracked by functional tickets and do not fail this baseline probe.
+ * Failures are contract breaks; the probe exits non-zero if any check fails.
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
@@ -110,15 +107,10 @@ const flattenedReplacementSeqs = (sourceRecords, seedRecords) =>
   ));
 
 const failures = [];
-const deviations = [];
 const ok = (label) => console.log(`  ✓ ${label}`);
 const fail = (label, err) => {
   console.error(`  ✗ ${label}\n    ${err?.stack ?? err}`);
   failures.push(label);
-};
-const deviation = (label, detail) => {
-  console.log(`  ! ${label}\n    ${detail}`);
-  deviations.push(label);
 };
 
 // ── minimal semver (prerelease-aware; mirrors dsh's includePrerelease) ──────
@@ -478,9 +470,23 @@ console.log('3. harness surface facts (Session v4 / createAgent / compactRegion)
       const titleOk = titleEvent?.data?.title === 'Probe source title (rewound)'
         && Array.isArray(titleEvent.data.messageSeqs)
         && titleEvent.data.source?.kind === 'user';
+
       if (cleared !== 1) fail('create setup', new Error('setup must clear the child inbox'));
       else if (!titleOk) fail('create title seam', new Error(`unexpected title append ${JSON.stringify(appended)}`));
       else ok('create options = meta{cwd,parentSession,isSeeded,agentPreset} + inheritedEventCount; title appended as session/title');
+
+      // Real persistence proof (RWC-002): spawn a separate process so the
+      // persistence backend's transitive imports resolve from the installed
+      // profile, not this probe's @deepseek-ai resolver hook.
+      const jsonlProbe = spawnSync(process.execPath, [join(REPO, 'scripts', 'check-create-jsonl.mjs')], {
+        encoding: 'utf8',
+        env: { ...process.env, DSH_HOME },
+      });
+      if (jsonlProbe.status !== 0) {
+        fail('child JSONL header/title', new Error(jsonlProbe.stderr || jsonlProbe.stdout || 'probe exited non-zero'));
+      } else {
+        ok(jsonlProbe.stdout.trim().split('\n').at(-1));
+      }
     }
   } catch (err) {
     fail('create call shape', err);
@@ -552,8 +558,6 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
     const byNewest = (a, b) => b.mtime - a.mtime;
     const candidates = [
       ...listTranscripts(sessionsRoot).filter((entry) => entry.version === 4).sort(byNewest),
-      // Raw v3 is pre-migration; keep it only as a limited fallback.
-      ...listTranscripts(sessionsRoot).filter((entry) => entry.version === 3).sort(byNewest).slice(0, 10),
     ];
     for (const candidate of candidates) {
       try {
@@ -566,14 +570,7 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
   const { events } = fixture;
   const fixtureName = fixture.path.split('/').slice(-2).join('/');
 
-  if (fixture.version === 4) {
-    ok(`fixture ${fixtureName} (v4, ${events.length} events)`);
-  } else {
-    deviation(
-      `fixture ${fixtureName} (v3 fallback)`,
-      'raw v3 rows are pre-migration (tool/result role "user"); current-format seed checks need a v4 transcript',
-    );
-  }
+  ok(`fixture ${fixtureName} (v4, ${events.length} events)`);
 
   const surface = events.filter((event) => SURFACE_TYPES.has(event?.type));
   let envelopeViolations = [];
@@ -646,13 +643,12 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
   if (surface.length > 0 && Session !== undefined) {
     try {
       const { buildSeed } = await import(pathToFileURL(join(REPO, 'lib', 'seed.js')).href);
-      // lib/seed.js keeps exactly this set, so alignment with the built seed
-      // uses the same accessor (developer/message is not seed-carried today).
+      // Surface alignment uses the same accessor as lib/seed.js; developer
+      // messages are surface-eligible and do travel with the seed.
       const { surfaceEvents } = await import(pathToFileURL(join(REPO, 'lib', 'events.js')).href);
       const starts = events.filter((event) => event.type === 'turn/start' && Number.isFinite(event.seq));
       const boundary = starts.length > 0 ? starts[starts.length - 1].seq - 1 : Math.max(0, Math.floor(events.length / 2));
 
-      let sawReplacement = false;
       for (const mode of ['after', 'before']) {
         const seed = buildSeed(events, boundary, mode, { id: 'probe-summary', time: 1 });
         // The kept side travels verbatim: the prefix for "after", the tail for
@@ -661,18 +657,24 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
         const keptSource = surfaceEvents(events).filter((event) => (
           mode === 'after' ? event.seq <= boundary : event.seq > boundary
         ));
-        const keptSeed = mode === 'after' ? seed.slice(0, keptSource.length) : seed.slice(1);
-        sawReplacement ||= keptSource.some(isReplaceSurfaceOp);
-        const flattened = flattenedReplacementSeqs(keptSource, keptSeed);
-        if (flattened.length > 0) {
-          deviation(
-            `seed ${mode} flattens ${flattened.length} kept replacement surfaceOp(s) to append`,
-            `the source kept replacement(s) at seq ${flattened.slice(0, 3).join(', ')}; ` +
-            'lib/seed.js materializeEvent() re-marks every surface record "append" and drops sourceEventSeqs. ' +
-            'Replaying a replacement as an append resurrects the shadowed originals in the child surface ' +
-            '(the RWC-003 shadowing bug). 0.2.1\'s TUI seed preserves the source envelope; a renumbered ' +
-            'seed must remap the seq references instead of flattening them.',
-          );
+        const seedSurface = seed.filter((event) => SURFACE_TYPES.has(event.type));
+        const keptSeed = mode === 'after'
+          ? seedSurface.filter((event) => event.seq <= boundary)
+          : seedSurface.slice(1);
+        // After mode keeps the source prefix verbatim, so a replacement must
+        // survive. Before mode deliberately folds the current tail and
+        // renumbers it, so its markers are expected to become appends.
+        if (mode === 'after') {
+          const flattened = flattenedReplacementSeqs(keptSource, keptSeed);
+          if (flattened.length > 0) {
+            fail(
+              'seed after preserves kept replacement surfaceOps',
+              new Error(
+                `the source kept replacement(s) at seq ${flattened.slice(0, 3).join(', ')} became appends; ` +
+                'replaying a replacement as an append resurrects the shadowed originals in the child surface.',
+              ),
+            );
+          }
         }
 
         const violations = [];
@@ -730,37 +732,102 @@ console.log('6. seed contract from a real transcript (Session.create validates)'
         }
       }
 
-      if (!sawReplacement) {
-        // No fixture in this profile exercises a replacement marker. Synthesize
-        // the minimal kept-side shadowing case so the RWC-003 deviation stays
-        // visible; this is a probe fixture, not part of the Session.create run.
-        const synthetic = [
-          {
-            type: 'user/message', seq: 0, time: 1, surfaceOp: 'append',
-            data: {
-              id: 'probe-shadowed', role: 'user', source: { kind: 'probe' },
-              content: [{ type: 'text', text: 'shadowed original' }],
-            },
-          },
-          {
-            type: 'user/message', seq: 1, time: 2,
-            surfaceOp: { op: 'replace', startSeq: 0, endSeq: 0 }, sourceEventSeqs: [0],
-            data: {
-              id: 'probe-replacement', role: 'user', source: { kind: 'probe' },
-              content: [{ type: 'text', text: 'replacement' }],
-            },
-          },
-        ];
-        const syntheticSeed = buildSeed(synthetic, 1, 'after', { id: 'probe-synthetic-summary', time: 3 });
-        const flattened = flattenedReplacementSeqs(synthetic, syntheticSeed.slice(0, synthetic.length));
-        if (flattened.length > 0) {
-          deviation(
-            'seed flattens a synthetic kept replacement surfaceOp to append',
-            `no v4 fixture in this profile contains a replacement surfaceOp, so the probe synthesized one at seq ${flattened[0]}; ` +
-            'lib/seed.js materializeEvent() re-marks it "append" and drops sourceEventSeqs. ' +
-            'That resurrects the shadowed original in the child surface (the RWC-003 shadowing bug); ' +
-            '0.2.1\'s TUI seed preserves the source envelope, and a renumbered seed must remap the seq references.',
+      // RWC-003 targeted fixture: before mode must replay the discarded
+      // prefix's policy baseline before the kept tail. The real fixture may or
+      // may not hold policy facts, so pin the ordering on a deterministic v4
+      // transcript and run the REAL Session.create validator over it.
+      const policyEvents = [
+        {
+          type: 'system/message', seq: 0, time: 1, surfaceOp: 'append',
+          data: { turn: 1, step: 0, message: { id: 'sys', role: 'system', content: [{ type: 'text', text: 'system' }], source: { kind: 'system-prompt' } } },
+        },
+        { type: 'turn/start', seq: 1, time: 2, data: { turn: 1 } },
+        {
+          type: 'user/message', seq: 2, time: 3, surfaceOp: 'append',
+          data: { id: 'u1', role: 'user', content: [{ type: 'text', text: 'first' }], source: { kind: 'user' } },
+        },
+        { type: 'permission/preset', seq: 3, time: 4, data: { preset: 'workspace-write' } },
+        { type: 'sandbox/mode', seq: 4, time: 5, data: { mode: 'workspace-write' } },
+        { type: 'turn/end', seq: 5, time: 6, data: { turn: 1 } },
+        { type: 'turn/start', seq: 6, time: 7, data: { turn: 2 } },
+        {
+          type: 'user/message', seq: 7, time: 8, surfaceOp: 'append',
+          data: { id: 'u2', role: 'user', content: [{ type: 'text', text: 'second' }], source: { kind: 'user' } },
+        },
+        { type: 'turn/end', seq: 8, time: 9, data: { turn: 2 } },
+      ];
+      const policySeed = buildSeed(policyEvents, 5, 'before', { id: 'policy-summary', time: 10 });
+      const presetIndex = policySeed.findIndex((event) => event.type === 'permission/preset' && event.data.preset === 'workspace-write');
+      const sandboxIndex = policySeed.findIndex((event) => event.type === 'sandbox/mode' && event.data.mode === 'workspace-write');
+      const tailIndex = policySeed.findIndex((event) => event.type === 'user/message' && event.data.id === 'u2');
+      const ordered = presetIndex > 0 && sandboxIndex > presetIndex && tailIndex > sandboxIndex;
+      try {
+        const policyChild = Session.create(
+          SessionId('contract-probe-policy'),
+          policySeed,
+          { version: formatVersion, id: 'contract-probe-policy', createdAt: 1, cwd: REPO, isSeeded: true },
+          policySeed.length,
+        );
+        const policySurface = policyChild.surface.nodes.length;
+        if (!ordered) throw new Error(`policy baseline order wrong: preset=${presetIndex} sandbox=${sandboxIndex} tail=${tailIndex}`);
+        ok(`before-mode policy baseline replayed before the tail and accepted by Session.create (surface ${policySurface})`);
+      } catch (err) {
+        fail('before-mode policy baseline', err);
+      }
+
+      // RWC-003 targeted replacement fixture: run both modes through the REAL
+      // Session.create validator and assert the folded child surface keeps the
+      // replacement and drops the shadowed original.
+      const replacementEvents = [
+        {
+          type: 'system/message', seq: 0, time: 1, surfaceOp: 'append',
+          data: { turn: 1, step: 0, message: { id: 'sys', role: 'system', content: [{ type: 'text', text: 'system' }], source: { kind: 'system-prompt' } } },
+        },
+        { type: 'turn/start', seq: 1, time: 2, data: { turn: 1 } },
+        {
+          type: 'user/message', seq: 2, time: 3, surfaceOp: 'append',
+          data: { id: 'u1', role: 'user', content: [{ type: 'text', text: 'kept' }], source: { kind: 'user' } },
+        },
+        {
+          type: 'user/message', seq: 3, time: 4, surfaceOp: 'append',
+          data: { id: 'shadowed', role: 'user', content: [{ type: 'text', text: 'shadowed prefix' }], source: { kind: 'user' } },
+        },
+        {
+          type: 'user/message', seq: 4, time: 5, surfaceOp: { op: 'replace', startSeq: 3, endSeq: 3 }, sourceEventSeqs: [3],
+          data: { id: 'replacement', role: 'user', content: [{ type: 'text', text: 'replacement prefix' }], source: { kind: 'user' } },
+        },
+        { type: 'turn/end', seq: 5, time: 6, data: { turn: 1 } },
+        { type: 'turn/start', seq: 6, time: 7, data: { turn: 2 } },
+        {
+          type: 'user/message', seq: 7, time: 8, surfaceOp: 'append',
+          data: { id: 'tail-shadowed', role: 'user', content: [{ type: 'text', text: 'shadowed tail' }], source: { kind: 'user' } },
+        },
+        {
+          type: 'user/message', seq: 8, time: 9, surfaceOp: { op: 'replace', startSeq: 7, endSeq: 7 }, sourceEventSeqs: [7],
+          data: { id: 'tail-replacement', role: 'user', content: [{ type: 'text', text: 'replacement tail' }], source: { kind: 'user' } },
+        },
+        { type: 'turn/end', seq: 9, time: 10, data: { turn: 2 } },
+      ];
+      for (const mode of ['after', 'before']) {
+        try {
+          const seed = buildSeed(replacementEvents, 5, mode, { id: `replacement-${mode}`, time: 100 });
+          const child = Session.create(
+            SessionId(`contract-probe-replacement-${mode}`),
+            seed,
+            { version: formatVersion, id: `contract-probe-replacement-${mode}`, createdAt: 1, cwd: REPO, isSeeded: true },
+            seed.length,
           );
+          const ids = child.surface.nodes.map((seq) => child.log[seq]?.data?.id ?? child.log[seq]?.data?.message?.id);
+          const expected = mode === 'after'
+            ? ['sys', 'u1', 'replacement', `replacement-${mode}`]
+            : [`replacement-${mode}`, 'tail-replacement'];
+          if (JSON.stringify(ids) !== JSON.stringify(expected)) {
+            fail(`replacement fixture ${mode}`, new Error(`child surface ${JSON.stringify(ids)} != ${JSON.stringify(expected)}`));
+          } else {
+            ok(`replacement fixture ${mode}: Session.create keeps the replacement and drops the shadowed original`);
+          }
+        } catch (err) {
+          fail(`replacement fixture ${mode}`, err);
         }
       }
     } catch (err) {
@@ -895,8 +962,7 @@ console.log('8. syntax + unit tests');
 }
 
 if (failures.length === 0) {
-  const suffix = deviations.length === 0 ? '' : ` (${deviations.length} documented deviation(s) above)`;
-  console.log(`\nALL CONTRACTS PASS${suffix}`);
+  console.log('\nALL CONTRACTS PASS');
 } else {
   console.log(`\n${failures.length} CONTRACT CHECK(S) FAILED`);
 }

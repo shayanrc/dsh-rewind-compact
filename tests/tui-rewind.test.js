@@ -44,6 +44,8 @@ function transcript({ openTurn = true } = {}) {
     toolCall(32, 'c2', 'edit', { file_path: '/repo/b.js' }),
     toolResult(33, 'c2'),
     userMsg(35, 'second ask'),
+    toolCall(36, 'c3', 'bash', { command: 'npm test' }),
+    msg('tool/result', 37, { callId: 'c3', result: 'error: failed\n[exit code: 1]' }),
     turnEnd(40, 2),
     turnStart(50, 3),
     userMsg(55, 'third ask TODO: finish up'),
@@ -162,9 +164,49 @@ test('rewindDoneAnswer (after) appends one scaffold summary of the discarded tai
   assert.deepEqual(options, { surfaceOp: 'append' });
   const scaffold = data.content.map((part) => part.text).join('\n');
   assert.match(scaffold, /## Files changed/);
+  // The scaffold must see the discarded tail's tool/call records, not just its
+  // surface messages: the same calls the picker warning counts (RWC-006/010).
+  assert.match(scaffold, /## Files changed\n- \/repo\/b\.js/);
+  assert.match(scaffold, /## Commands run\n- npm test \(exit 1\)/);
+  assert.match(scaffold, /## Errors encountered\n- error: failed/);
   assert.match(scaffold, /TODO: finish up/);
   assert.ok(!scaffold.includes('first ask'), 'the kept prefix must not be summarized by after mode');
+  assert.ok(!scaffold.includes('/repo/a.js'), 'the kept prefix\'s write must not be summarized');
   assert.match(answer, /compacted after this point/);
+});
+
+test('rewindDoneAnswer (after) reports a failed append as an error toast, never undefined', async () => {
+  const source = sourceSession();
+  const child = { id: 'child', append: async () => { throw new Error('append offline'); } };
+  const ctx = ctxFor({ source, child });
+  const answer = await rewindDoneAnswer(ctx, {
+    mode: MODE_AFTER, boundarySeq: 29, sourceSessionId: 'source', childSessionId: 'child',
+  });
+  assert.equal(typeof answer, 'string');
+  assert.match(answer, /could not be appended/);
+  assert.match(answer, /append offline/);
+  assert.match(answer, /prefix only/);
+  assert.doesNotMatch(answer, /compacted after this point/);
+});
+
+test('rewindDoneAnswer (after) reports a missing child session as an error toast', async () => {
+  const ctx = ctxFor({ source: sourceSession() });
+  const answer = await rewindDoneAnswer(ctx, {
+    mode: MODE_AFTER, boundarySeq: 29, sourceSessionId: 'source', childSessionId: 'missing',
+  });
+  assert.equal(typeof answer, 'string');
+  assert.match(answer, /child session append unavailable/);
+});
+
+test('rewindDoneAnswer (after) reports a missing source session, never a success toast', async () => {
+  const ctx = ctxFor({ child: childSession('child', []) });
+  const answer = await rewindDoneAnswer(ctx, {
+    mode: MODE_AFTER, boundarySeq: 29, sourceSessionId: 'gone', childSessionId: 'child',
+  });
+  assert.equal(typeof answer, 'string');
+  assert.match(answer, /source session gone was not found/);
+  assert.match(answer, /prefix only/);
+  assert.doesNotMatch(answer, /compacted after this point/);
 });
 
 test('rewindDoneAnswer (after) reports an empty tail without appending', async () => {

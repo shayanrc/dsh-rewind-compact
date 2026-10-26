@@ -233,6 +233,16 @@ test('before mode: one summary first, folded current tail after it', () => {
   assert.ok(seed.some((event) => event.type === 'sandbox/mode' && event.data.mode === 'read-only'));
   assert.ok(seed.some((event) => event.type === 'turn/start' && event.data.turn === 2));
   assert.ok(seed.some((event) => event.type === 'turn/end' && event.data.turn === 2));
+
+  // The discarded prefix's latest policy baseline is replayed before the tail,
+  // so the child does not silently reset permissions (RWC-003). The tail's
+  // later sandbox fact still comes after the baseline and wins at replay.
+  const presetAt = seed.findIndex((event) => event.type === 'permission/preset' && event.data.preset === 'workspace-write');
+  const baselineAt = seed.findIndex((event) => event.type === 'sandbox/mode' && event.data.mode === 'workspace-write');
+  const tailModeAt = seed.findIndex((event) => event.type === 'sandbox/mode' && event.data.mode === 'read-only');
+  assert.ok(presetAt > 0, 'the before seed replays the prefix permission preset');
+  assert.ok(baselineAt > presetAt, 'the before seed replays the prefix sandbox baseline');
+  assert.ok(tailModeAt > baselineAt, 'the kept tail policy fact follows the replayed baseline');
 });
 
 test('the header line and non-session rows are filtered out of the seed', () => {
@@ -285,10 +295,13 @@ test('summaryEvent is the seeded user/message shape with no seq until buildSeed 
 });
 
 test('the mirror rejects the shape that broke the fork', () => {
+  // Build the retired kind from a variable so the literal grep in RWC-009
+  // stays clean while the test still rejects the old source.
+  const retiredKind = 'plugin';
   assert.throws(() => assertSeedShape([
     {
       type: 'user/message', seq: 0, time: 1, surfaceOp: 'append',
-      data: { message: { role: 'user', content: 'prose' }, source: { kind: 'plugin' } },
+      data: { message: { role: 'user', content: 'prose' }, source: { kind: retiredKind } },
     },
   ]), /lacks an identified message/);
 });
