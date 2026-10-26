@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   listTurnBoundaries, isNoOp, forkBoundarySeq, modeRange, filesChangedSince, boundaryForPoint,
-  recordCallId, toolArguments, toolResultText,
+  parseRewindMode, recordCallId, toolArguments, toolResultText,
 } from '../lib/events.js';
 import { buildScaffold } from '../lib/scaffold.js';
 
@@ -59,12 +59,32 @@ test('modeRange splits around the boundary', () => {
   assert.deepEqual(modeRange(events, 3, 'before'), { start: 0, end: 3 });
 });
 
-test('boundaryForPoint resolves index, negative index, and id', () => {
+test('boundaryForPoint resolves an in-range 1-based turn, -1, and an exact id', () => {
   const boundaries = [{ seq: 1, turn: 1 }, { seq: 4, turn: 2 }, { seq: 7, turn: 3 }];
+  assert.equal(boundaryForPoint(boundaries, '1').seq, 1);
+  assert.equal(boundaryForPoint(boundaries, 1).seq, 1);
   assert.equal(boundaryForPoint(boundaries, '2').seq, 4);
-  assert.equal(boundaryForPoint(boundaries, '-1').seq, 7);
   assert.equal(boundaryForPoint(boundaries, '3').seq, 7);
-  assert.equal(boundaryForPoint(boundaries, 'nope'), undefined);
+  assert.equal(boundaryForPoint(boundaries, '-1').seq, 7);
+  assert.equal(boundaryForPoint([{ seq: 2, turn: 'alpha' }], 'alpha').seq, 2);
+});
+
+test('boundaryForPoint fails closed instead of falling back to the newest turn', () => {
+  const boundaries = [{ seq: 1, turn: 1 }, { seq: 4, turn: 2 }, { seq: 7, turn: 3 }];
+  for (const point of ['0', 0, '99', 99, '-2', '2.5', 2.5, '', '   ', 'n', 'nope', null, undefined]) {
+    assert.equal(boundaryForPoint(boundaries, point), undefined, `point ${JSON.stringify(point)} must not resolve`);
+  }
+  assert.equal(boundaryForPoint([], '1'), undefined);
+});
+
+test('parseRewindMode accepts only after/before and defaults when omitted', () => {
+  assert.equal(parseRewindMode('after'), 'after');
+  assert.equal(parseRewindMode('before'), 'before');
+  assert.equal(parseRewindMode(undefined), 'after');
+  assert.equal(parseRewindMode('sideways'), undefined);
+  assert.equal(parseRewindMode('AFTER'), undefined);
+  assert.equal(parseRewindMode(''), undefined);
+  assert.equal(parseRewindMode(null), undefined);
 });
 
 test('filesChangedSince counts file-touching tools after the boundary', () => {

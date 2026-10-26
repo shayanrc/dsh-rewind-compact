@@ -11,6 +11,36 @@ Two layers of testing:
    This is the layer that caught every real bug (seed envelope, seq
    renumbering, surfaceOp markers, message shapes).
 
+## Contract baseline (dsh 0.2.1-rc.2)
+
+Declared harness line: `dsh >=0.2.1-rc.2 <0.3.0-0` (`engines.dsh`, mirrored by
+the `@deepseek-ai/dsh-*` peers; the `<0.3.0-0` bound also excludes
+`0.3.0-rc.x`). Before any boot:
+
+```sh
+dsh --version        # expect 0.2.1-rc.2
+npm run check        # version gate + contract probe + syntax + unit tests
+```
+
+The probe imports `lib/` from **this checkout** (no profile refresh needed) and
+resolves harness packages from `$DSH_HOME/profiles/node_modules`. It picks the
+newest `session.v4` fixture with surface events (raw v3 only as a
+pre-migration fallback) and runs the harness's own `Session.create` validator
+over seeds built by `lib/seed.js`, so editing `lib/` changes the probe result
+without reinstalling the bundle.
+
+`!` lines are documented deviations the current implementation still has (real
+0.2.1 facts such as the legacy `{kind: 'plugin'}` summary source, the
+pre-0.2.1 fork option aliases, or a kept replacement `surfaceOp` flattened to
+`append` — the RWC-003 seed-shadowing risk); they are owned by functional
+tickets and do not fail this baseline probe. A running dsh outside the
+declared line fails the probe with the exact range. Verify that failure path
+without uninstalling anything:
+
+```sh
+RWC_PROBE_DSH_VERSION=0.3.0 npm run check   # expected: exit 1, version-gate error
+```
+
 ## Automated browser E2E — verified green
 
 The script drives a real browser, so it needs a Playwright install of its
@@ -85,7 +115,7 @@ What each step proves:
 1. **Init from template** — `dsh --profile <name> --from-default-profile web`
    creates the profile from the same template as the real web profile (the
    first boot is killed; it exists only to materialize the profile).
-2. **Install** — `dsh plugin --profile <name> add --offline file:<repo>`
+2. **Install** — `dsh plugin --profile <name> add --offline "file:<repo>"`
    runs pnpm in the profile dir, then reconciles `dsh.profile.bundles`: a
    dependency declaring `dsh.bundle` joins the layer stack automatically.
 3. **Compose** — `--dump-config` must contain `rewind-compact/entry`. This is
@@ -160,6 +190,11 @@ kill <boot pid>
 
 - npm registry writes fail (`EROFS` on `~/.npm/_cacache`); the method is
   offline by design (`--offline`, local `file:` install).
+- `package.json` declares `engines.dsh = ">=0.2.1-rc.2 <0.3.0-0"`. dsh reads
+  the runtime version from app-boot's own manifest and evaluates `engines.dsh`
+  alone (peers are ignored for that gate), so installer and probe agree.
+- The contract probe needs `unzstd` on `PATH` to read `.zstd` transcripts
+  (Session logs are multi-frame; one frame per flush).
 - Harness peers (`@deepseek-ai/dsh-tools`, `dsh-session`, `dsh-llm`,
   `schemastery`) are declared as `peerDependencies` and resolve from the
   profiles-level hoisted `node_modules` (`$DSH_HOME/profiles/node_modules`),
@@ -191,7 +226,7 @@ verified on a green boot (log shows `[rewind-compact] entry loaded`):
    web template, `ctx.compaction` does not exist at all.
 3. **`pnpm add file:` does not re-copy changed files** ("Already up to
    date"). Refresh the profile's copy with remove + add:
-   `dsh plugin --profile <name> remove dsh-rewind-compact && dsh plugin --profile <name> add --offline file:<repo>`.
+   `dsh plugin --profile <name> remove dsh-rewind-compact && dsh plugin --profile <name> add --offline "file:<repo>"`.
 4. **The fork seed used the assistant message shape.** The summary record was
    built as `data.message.{role,content}` — the shape `assistant/message`
    uses — with a bare string for content and no `id`, so every fork died in

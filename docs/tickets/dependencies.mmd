@@ -1,0 +1,88 @@
+%% rewind-compact ticket dependency graph (2026-10-27)
+%% Solid arrow = hard prerequisite. Dotted arrow = coordination / shared files.
+%% Green = open, orange = blocked, blue = decision, purple dashed = continuous.
+%% Wave 1 is the longest-path level from 001/015/008. RWC-013 starts in wave 1
+%% and closes only after the code fixes (its test-acceptance edges are omitted
+%% to keep the graph readable; see dependency-graph.md).
+flowchart TB
+  classDef open fill:#E8F5E9,stroke:#2E7D32,color:#1B5E20
+  classDef blocked fill:#FFF3E0,stroke:#E65100,color:#BF360C
+  classDef decision fill:#E3F2FD,stroke:#1565C0,color:#0D47A1
+  classDef continuous fill:#F3E5F5,stroke:#6A1B9A,color:#4A148C,stroke-dasharray: 4 2
+  classDef done fill:#ECEFF1,stroke:#607D8B,color:#37474F
+
+  subgraph w0["Wave 0 — start now"]
+    direction LR
+    t001["RWC-001<br/>harness baseline<br/>P0 · done"]:::done
+    t008["RWC-008<br/>turn-point validation<br/>P1 · done"]:::done
+    t015["RWC-015<br/>spec decisions (ADR)<br/>P0 · done"]:::done
+  end
+
+  subgraph w1["Wave 1 — after 001 (004 also needs 015)"]
+    direction LR
+    t002["RWC-002<br/>fork metadata<br/>P0 · open"]:::open
+    t003["RWC-003<br/>surface seed<br/>P0 · open"]:::open
+    t004["RWC-004<br/>retire in-place<br/>P0 · open"]:::open
+    t005["RWC-005<br/>TUI seq → turn<br/>P0 · open"]:::open
+    t010["RWC-010<br/>files changed<br/>P1 · open"]:::open
+    t012["RWC-012<br/>profiles<br/>P1 · open"]:::open
+    t013["RWC-013<br/>tests + probe<br/>P1 · continuous"]:::continuous
+    t014["RWC-014<br/>packaging<br/>P2 · open"]:::open
+  end
+
+  subgraph w2["Wave 2 — after 005/003 (+015 for 006)"]
+    direction LR
+    t006["RWC-006<br/>drop TUI before<br/>P1 · open"]:::open
+    t009["RWC-009<br/>message source<br/>P1 · open"]:::open
+  end
+
+  subgraph w3["Wave 3 — convergence"]
+    direction LR
+    t007["RWC-007<br/>failure atomicity<br/>P0 · blocked"]:::blocked
+    t011["RWC-011<br/>docs/spec alignment<br/>P1 · blocked"]:::blocked
+  end
+
+  subgraph w4["Wave 4 — release"]
+    t016["RWC-016<br/>fresh-profile verification<br/>P1 · blocked"]:::blocked
+  end
+
+  %% hard prerequisites
+  t001 --> t002
+  t001 --> t003
+  t001 --> t004
+  t001 --> t005
+  t001 --> t010
+  t001 --> t012
+  t001 --> t013
+  t001 --> t014
+
+  t015 --> t004
+  t015 --> t006
+  t015 --> t011
+
+  t005 --> t006
+  t003 --> t009
+  t004 --> t007
+  t006 --> t007
+
+  t002 --> t011
+  t003 --> t011
+  t004 --> t011
+  t005 --> t011
+  t006 --> t011
+
+  t007 --> t016
+  t008 --> t016
+  t009 --> t016
+  t010 --> t016
+  t011 --> t016
+  t012 --> t016
+  t013 --> t016
+  t014 --> t016
+
+  %% coordination / shared files (no precedence implied)
+  t002 -.->|shared rewind/seed| t003
+  t004 -.->|shared tool/scaffold| t010
+  t013 -.->|pack/test| t014
+
+  %% legend comment: solid = prerequisite, dotted = coordinate

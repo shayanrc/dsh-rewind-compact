@@ -1,172 +1,275 @@
-# Harness contracts (verified 2026-10-15)
+# Harness contracts (verified 2026-10-27 on dsh 0.2.1-rc.2)
 
-The facts this plugin depends on, each verified against an installed artifact
-during the 2026-10-14/15 implementation and live-testing. Every claim has a
-file:line anchor in the installed harness (`dsh` 0.1.5-rc.x, harness packages
-`0.1.5-rc.2`). Re-verify against the anchors before trusting an upgraded
-harness. This is a **reference document**: read it when implementing, not
-every turn.
+The facts this plugin depends on, each verified against the installed artifacts
+on 2026-10-27 (Node 26.8.1). Every claim carries a file:line anchor; re-verify
+the anchors after any harness upgrade. `npm run check` re-asserts the version
+line and the Session / `CreateAgentOptions` / `compactRegion` facts below.
 
 Paths used below:
 
-- `D`: `$(npm root -g)/@deepseek-ai/dsh` (launcher; resolved from the global npm root)
-- `N`: `D/node_modules/@deepseek-ai` (harness packages)
-- `H`: `$DSH_HOME/profiles/node_modules/@deepseek-ai` (profiles-level hoist)
+- `D`: `$(npm root -g)/@deepseek-ai/dsh` — launcher, `0.2.1-rc.2`
+- `N`: `D/node_modules/@deepseek-ai` — harness packages, `0.2.1-rc.2`
+- `H`: `$DSH_HOME/profiles/node_modules/@deepseek-ai` — profiles-level hoist,
+  `0.2.1-rc.2` (where profile plugins resolve harness peers)
 - `T`: `$DSH_HOME/profiles/dsh-tui/node_modules/@deepseek-harness-tui/dsh-tui`
+  — TUI, `0.17.0`
+
+## 0. Supported line and version gate
+
+- Declared line: `engines.dsh = ">=0.2.1-rc.2 <0.3.0-0"` in `package.json`; the
+  `@deepseek-ai/dsh-*` peer ranges mirror it. Running version: `0.2.1-rc.2`.
+- The gate reads the runtime version from app-boot's own `package.json`
+  (`H/dsh-app-boot/lib/index.js:271-275`) and evaluates `engines.dsh` **alone**
+  when present — peer ranges are then ignored for the gate
+  (`H/dsh-app-boot/lib/index.js:279-320`). Ranges use
+  `semver.satisfies(runtime, range, {includePrerelease: true})`
+  (`H/dsh-app-boot/lib/index.js:276-277`), so `0.2.1-rc.2` participates. The
+  upper bound is `<0.3.0-0`, not `<0.3.0`: under prerelease semantics the
+  latter admits `0.3.0-rc.x`, which is outside the verified line.
+- Compatibility matrix:
+
+| Harness line | Supported | Notes |
+|---|---|---|
+| `0.1.x`, `0.2.0-rc.x` | no | dropped from peers; contracts below were re-verified on 0.2.1 |
+| `0.2.1-rc.2` | **yes, verified** | the installed line this document anchors |
+| later `0.2.x` | allowed by the range, untested | run `npm run check` before claiming support |
+| `>=0.3.0-0` (incl. `0.3.0-rc.x`) | no | Session format, agent, and decision seams may move |
 
 ## 1. Bundle anatomy
 
-- A bundle is an npm package whose manifest declares
-  `"dsh": {"bundle": {"patch": "./cordis.patch.yml"}}` (`D/README.md`).
-- The patch file is a YAML array of loader patch entries: row overrides
-  `{id, name?, disabled?, config?}` or `insert:` lists. A patch **replaces the
-  targeted row's whole config** — never merges. Layer order: bundle patches →
-  profile `cordis.patch.yml` → `$DSH_HOME/cordis.patch.yml` → `--patch`
-  overlays; last-write-per-id wins (`D/lib/profile-boot-*.js:232-256`).
-- Profiles declare `dsh.profile.bundles` (ordered). `dsh plugin --profile <p>
-  <pnpm args>` forwards to pnpm in the profile dir, then reconciles: any
-  dependency resolving to a package that declares `dsh.bundle` joins the
-  layer stack automatically (`D/lib/plugin-*.js:25-128`).
-- Shipped templates: `acp`, `web`, `headless`, `sdk`, `sdk-minimal`
-  (`N/dsh-app-boot/lib/index.js:328`). `dsh-tui` is NOT a template — clone a
-  profile by copying the directory.
-- `patchReload: live` hot-applies patch/config changes but does **not**
-  re-import changed bundle module code: restart the profile process for lib
-  changes.
+- A bundle's manifest declares `"dsh": {"bundle": {"patch": "./cordis.patch.yml"}}`;
+  `patch` is one file **or an ordered list** of files
+  (`H/dsh-app-boot/lib/index.js:490-495,517-520`).
+- The tree is composed by applying each bundle's patch lists in
+  `dsh.profile.bundles` order over an empty entry list, then the profile's
+  `cordis.patch.yml`, then the home layer and `--patch` overlays
+  (`H/dsh-app-boot/lib/index.js:1053,1112,3207`). A patch replaces the targeted
+  row's whole config — never a deep merge (`H/dsh-app-boot/lib/index.js:3044`).
+- `dsh plugin --profile <p> <pnpm args>` forwards to pnpm in the profile dir
+  (`D/lib/bin.js:117-120`); after a successful operation DSH reconciles
+  `dsh.profile.bundles` and activates new bundle dependencies automatically
+  (`H/dsh-app-boot/lib/index.js:1202-1221`).
+- The profile's user patch layer is hot-reloaded on long-lived surfaces
+  (`H/dsh-app-boot/lib/index.js:508`), but package contents and loaded modules
+  are **not** reloaded (`H/dsh-app-boot/lib/index.js:3530`): restart the profile
+  process after changing bundle code.
 
 ## 2. Plugin shape (Cordis)
 
-- Entry modules export `{name, inject, apply}`; `apply(ctx)` runs under
-  `ctx.effect(function* () { yield disposer; ... })`
-  (`N/dsh-command-compact/lib/index.js:77-100`).
+- Entry modules export `{name, inject, apply}`; `apply(ctx)` registers through
+  `ctx.effect(function* () { yield disposer; ... })`.
 - **`ctx.<service>` throws on any property not declared in `inject`** —
-  optional-chaining cannot guard it (`cannot get property "X" without
-  inject`). Probe optional services via `ctx.get('name')` in try/catch.
-- Harness packages resolve from the profiles-level hoist (`H`) for
-  profile-installed bundles; declare harness deps as `peerDependencies`
-  (pattern: `T/package.json`).
+  optional chaining cannot guard it. Probe optional services with
+  `ctx.get('name')` inside try/catch (this plugin does so in `lib/events.js`).
+- Harness packages resolve from the profiles-level hoist (`H`): declare them as
+  `peerDependencies` (pattern: `T/package.json`).
 
 ## 3. Tool contract (`ctx.tools.register(defineTool({...}))`)
 
-- `defineTool` from `@deepseek-ai/dsh-tools`; parameters = **per-property
-  map** `{name: {type, required?, description?, enum?}}`, NOT JSON Schema
-  (`N/dsh-tool-goal/lib/index.js:275-300`).
-- `output.schema` = **raw JSON Schema in the harness's enforced subset**:
-  `required: true` rides INSIDE each property, objects close
-  `additionalProperties: false`, null via `{type: 'null'}`, unions via
-  `oneOf` (`N/dsh-tool-goal/lib/index.js:125-246`). Schemastery is NOT
-  accepted here (`unsupported JSON schema: schema must be a value schema
-  object` — `N/dsh-tools/lib/index.js:772`). Schemastery 3.18 has **no
-  `.nullable()`**.
-- `output.render(args, value) => [{type:'text', text}]`;
-  `presentCall` returns a presentation card `{card:'generic', title, kind,
-  rawInput}` (`N/dsh-tool-goal/lib/index.js:248-254`).
-- `execute(args, exec)` — `exec.agent`; the calling agent's session is
-  `agent.session`; events via `agent.session.snapshotEvents()`.
-- Typed errors: `new HarnessError(message, code)` from `@deepseek-ai/dsh-llm`.
-- Direct-human authority pattern: `ctx.sessionProjections.stateOf(agent.session,
-  'turnBoundary')` → `openTurnStartSeq`, then a user-sourced `user/message`
-  in the open turn (`N/dsh-tool-goal/lib/index.js:18-76`).
+- `defineTool` from `@deepseek-ai/dsh-tools` (`H/dsh-tools/lib/types/schema.d.ts:248`;
+  compiles `output.schema` at `H/dsh-tools/lib/index.js:792,838`).
+- `parameters` is a **per-property map** `{name: {type, required?, description?,
+  enum?}}`, not JSON Schema. `output.schema` is raw JSON Schema in the harness's
+  enforced subset: `required: true` rides inside each property, objects close
+  `additionalProperties: false`, unions use `oneOf`, null is `{type: 'null'}`.
+  Schemastery is not accepted there (the `dsh-tool-goal` dialect: `N/dsh-tool-goal/lib/index.js:264-300`).
+- `output.render(args, value) => [{type: 'text', text}]`; `presentCall` returns
+  `{card, title, kind, rawInput}`. `execute(args, exec)` reaches the caller via
+  `exec.agent` → `agent.session`.
+- `register(definition)` is `H/dsh-tools/lib/types/index.d.ts:637`. Typed errors:
+  `new HarnessError(message, code)` from `@deepseek-ai/dsh-llm`.
 
-## 4. Command contract (`ctx.commands.register({name, description, handler})`)
+## 4. Command contract (`ctx.commands.register({...})`)
 
-- `handler(invocation)` receives `{rawInput, agent, signal, commandId}` and
-  returns `{kind: 'success'|'error', text, sourceEventSeq?}`
-  (`N/dsh-command-compact/lib/index.js:48-96`). The adapter renders the
-  leading slash.
+- Registration is `{name (lowercase, no slash), description, handler, input?,
+  recordInput?, definitionId?}` (`H/dsh-commands/lib/types/index.d.ts:38-55,94`).
+- `handler(invocation)` receives `{commandId, agent, rawInput, attachments,
+  signal}` (`H/dsh-commands/lib/types/index.d.ts:19-37`) — no `signal`-less
+  shape and no `sourceEventSeq` input. It returns
+  `{kind: 'success'|'error', text, sourceEventSeq?}`
+  (`H/dsh-commands/lib/types/types.d.ts:34-40`).
 - Interactive prompts: `ctx.userQuestions.ask({questions: [{id, question,
   header?, options: [{label, description}], multiSelect?}], agent, signal})`
-  → `{answers: [{id, selected: string[], custom?}]}` — rendered natively in
-  web and TUI (`N/dsh-tool-ask-user/lib/index.js:86-115`).
+  → `{answers: [{id, selected: string[], custom?}]}`.
 
 ## 5. Skill contract (`ctx.skills.register(skill)`)
 
-- Register accepts `{name (SKILL_NAME-valid), description (non-empty),
-  invocation: {modelInvocable, userInvocable}, ...}` and defaults
-  `provider`/`invocation` (`N/dsh-skill/lib/index.js:185-215`).
-- The **load-time** validator (`validateDefinition`, not exported,
-  `N/dsh-skill/lib/index.js:478-495`) requires `source`, `provider`, AND
-  `content` to be strings — a `path` alone yields `loaded skill "…" source
-  must be a string`. Ship the SKILL.md body inline as `content`.
+- Registration accepts `{name (SkillName-valid), description, content,
+  source, invocation?: {modelInvocable, userInvocable}, provider?, path?,
+  whenToUse?, resourceBase?}` (`H/dsh-skill/lib/types/index.d.ts:78-88`), and
+  omitting `provider`/`invocation` is allowed (`register` at `:193-215`, where
+  the defaults are applied; `:257` is inside `get()`).
+- The load-time validator (`validateDefinition`, not exported,
+  `H/dsh-skill/lib/index.js:471-489`) requires `source`, `provider`, AND
+  `content` to be strings. A `path` alone fails with `loaded skill "…" source
+  must be a string`; ship the SKILL.md body inline as `content` (this bundle
+  does, and also passes `path` as display metadata).
 
 ## 6. Compaction contract
 
-- `ctx.compaction`: `compactIfNeeded`, `compactNow(agent, signal,
-  sourceCommandId)`, `compactRegion(start, end, agent, signal)` — exactly 4
-  params, no instructions argument (`N/dsh-compaction-basic/lib/index.js:930`).
-- The summarizer (`summarizeWithLlm`) appends its own instruction as the
-  final input and condenses the range; deliver custom facts **inside the
-  compacted range** as the final message so they survive into the prose
-  (`N/dsh-compaction-basic/lib/index.js:240-300`).
-- The web template profile has NO compaction bundle — probe the service and
+- `ctx.compaction.compactRegion(start, end, agent, signal?)` — exactly four
+  parameters, no instructions argument
+  (`H/dsh-compaction/lib/types/index.d.ts:141-158`).
+- `start` and `end` are **inclusive surface-node seqs** (not numeric seq order):
+  both must name existing surface nodes, `startIdx <= endIdx`, no compaction
+  may already be active, and the session must have an open turn (the events are
+  enclosed in it) (`H/dsh-compaction-basic/lib/index.js:450-462,549-563`).
+  Both edges must be tool-pairing-balanced — no split call/result pair and no
+  open step (`H/dsh-compaction/lib/index.js:80,91`; errors at
+  `H/dsh-compaction-basic/lib/index.js:557-558`).
+- The summarizer receives the selected span, appends its own instruction, and
+  replaces the span with a user message carrying
+  `source.kind = 'compact-checkpoint'`
+  (`H/dsh-compaction-basic/lib/index.js:292-344,582-627`;
+  `compactCheckpointSource` at `H/dsh-compaction/lib/index.js:109-121`).
+  Deliver custom facts **inside the compacted range** as its final message so
+  they survive into the prose.
+- `compactNow(agent, signal, sourceCommandId?)` is the idle-session variant: it
+  requires no open turn (busy otherwise) and flushes persistence
+  (`H/dsh-compaction-basic/lib/index.js:985-1011`).
+- The web template profile has no compaction bundle — probe the service and
   degrade to scaffold-only summaries.
 
 ## 7. Session/transcript contract
 
-- Transcripts: `$DSH_HOME/sessions/<mangled-cwd>/<session-id>/
-  session.v3.jsonl.zstd`; one JSON record per line: `{type, seq, time, data}`
-  (+ optional `surfaceOp`, `sourceEventSeqs`, `ignorable`). Types include
-  `user/message`, `assistant/message`, `tool/call`, `tool/result`,
-  `turn/start|end`, `step/start|end`, `command/run|done`,
-  `agent/inbox/spliced`, `request/header` (which carries the per-request tool
-  list — the definitive "is my tool exposed?" check), `session/end-seed`.
-- **Append-only**: committed events are never rewritten; compaction shadows
-  ranges via `surfaceOp: {op: 'replace', startSeq, endSeq}`. Only the four
-  surface types may carry `surfaceOp`.
-- **Fork seed** = full event envelopes `{type, seq, time, data}` (the
-  source's own surface records, cloned) — `agents.create` validates the
-  envelope and rejects `{role, content}` shapes
-  (`N/dsh-session/lib/index.js:849-865`: allowed keys, string type,
-  non-negative safe-integer seq/time, `data !== undefined`).
+- Current format is **v4** (`SESSION_FORMAT_VERSION = 4`,
+  `H/dsh-session/lib/index.js:56`; header validation
+  `:1040-1064`; prepared header `:1819-1827`). The filename is
+  `session.v4.jsonl.zstd` (`H/dsh-session-format/lib/index.js:470-479`,
+  `H/dsh-session-persistence-jsonl/lib/index.js:767`).
+- Installed logs **can be multi-frame zstd** (observed): a live session grew by
+  appending frames, so Node's `zlib.zstdDecompressSync` returned only the first
+  one. Read them with `unzstd -c -f` or a streaming decoder — a probe gotcha,
+  not a harness contract.
+- Surface event types: `system/message`, **`developer/message`**,
+  `user/message`, `assistant/message`, `tool/result`
+  (`H/dsh-session/lib/types/types.d.ts:443`). `developer/message` carries
+  `{turn, step, message: DeveloperMessage, headerSeq?}` (`:297-304`, role at
+  `H/dsh-llm/lib/types/message.d.ts:141`). `tool/result` messages have
+  **`role: 'tool'`** and `source: {kind: 'tool', callId}` plus a matching
+  `toolCallId` (`H/dsh-llm/lib/types/message.d.ts:152-158`;
+  `H/dsh-session/lib/index.js:1183-1194`).
+- Message sources are a merge-extensible map: `user`, `model`, `tool`,
+  `system-prompt` (`H/dsh-llm/lib/types/message.d.ts:96-108`). There is **no
+  shared catch-all `plugin` kind**; producers declare their own `kind` by
+  module augmentation (compaction adds `compact-checkpoint`,
+  `H/dsh-compaction/lib/types/index.d.ts:19-22`; live transcripts also show
+  `agent-instructions`, `runtime-context`, `skill-catalog`, `time-context`).
+  The validator only requires a non-empty string `kind` on a user message
+  (`H/dsh-session/lib/index.js:1205`), so unknown user kinds load; consumers
+  fall through. (Legacy v3 transcripts used `{kind: 'plugin', plugin}`; this
+  bundle's `summaryMessage()` still does — a documented baseline deviation.)
+- Surface markers: only the five surface types carry `surfaceOp` — `'append'`
+  or `{op: 'replace', startSeq, endSeq}` naming an existing span of the current
+  surface (`H/dsh-session/lib/types/types.d.ts:443-466`); a replacement must
+  also list every shadowed surface node in `sourceEventSeqs`
+  (`H/dsh-session/lib/index.js:313-331,446-455`). The child surface is folded
+  from the seed by replaying these markers (`:425-469`), so a seed that keeps
+  them reproduces the source's current surface.
+- Fork seeds: the TUI cuts by passing a raw prefix of the source log through
+  the boundary — `sliceLiveSessionSeed` returns
+  `events.slice(0, boundary + 1)` with seqs unchanged
+  (`T/lib/types/dsh-adapter/compat/liveSession.js:119-145`) — so each event's
+  envelope, including a replacement `surfaceOp` and its `sourceEventSeqs`,
+  travels into the child. A hand-built or renumbered seed (for example
+  `lib/seed.js`, which prepends/appends one summary record and renumbers
+  contiguously from 0) must remap `surfaceOp.startSeq`/`endSeq` and
+  `sourceEventSeqs` onto the child seqs (optional source provenance on append
+  records may instead be dropped) and must **not** flatten a replacement to
+  `append`: replaying it as an append resurrects the shadowed originals in the
+  child surface (the RWC-003 shadowing bug). `lib/seed.js` currently flattens
+  every kept surface record to `append` and drops `sourceEventSeqs` — a
+  baseline deviation owned by RWC-003; the probe reports it with `!`, not as a
+  failure. The harness's own seed validator is
+  `H/dsh-session/lib/index.js:1113-1142,1194-1225` and seq contiguity is
+  enforced at `:1405-1406`.
 - `session.lock` is a kernel flock lease; never delete.
 
 ## 8. Fork recipe (rewind)
 
 The TUI's own recipe (`T/lib/types/dsh-adapter/channel/session-rewind.js`):
 
-1. cancel agent (only from UI-driven flows — a command/tool fork must NOT
-   cancel its own caller) → wait `turn/end` → settleCompaction;
-2. walk back from the selected row to the enclosing `turn/start`, cut at
-   `turnStart.seq - 1`; `boundary < 0` = "cannot rewind to the very first
-   message";
+1. cancel the agent (UI-driven flows only — a command/tool fork must NOT cancel
+   its own caller) → wait `turn/end` → `settleCompaction` (`:34-42`);
+2. walk back from the picked row to the enclosing `turn/start`, cut at
+   `turnStart.seq - 1`; `boundary < 0` means "cannot rewind to the very first
+   message" (`:44-62`);
 3. `childId = SessionId(randomUUID())` (`@deepseek-ai/dsh-session`);
-4. `ctx.agents.create({sessionId: childId, seed, inheritedCount:
-   seed.length, parentSession: sourceId, setup: async (_ctx, agent) => {
-   agent.inbox.clear(); … }})` — never `sessions.fork()`;
-5. the pre-rewind session is never mutated; the discarded side is compacted
-   on the CHILD after seeding.
+4. `agents.create({sessionId, seed, meta: {cwd, parentSession,
+   isSeeded: true, agentPreset?}, inheritedEventCount: seed.length,
+   agentOptions, setup})` — never `sessions.fork()`; the TUI maps its request
+   through `liveSessionCreateOptions` (`:88-102`,
+   `T/lib/types/dsh-adapter/compat/liveSession.js:157-165,206-223`);
+5. `setup` composes before publication and clears the child inbox
+   (`session-rewind.js:98-101`); the pre-rewind session is never mutated —
+   the discarded side stays resumable. The TUI recipe **stops after seeding**:
+   it does not compact the child. This bundle's fork path ships a
+   **scaffold-only summary** because a forked child has no open turn, and
+   `compactRegion` requires one (§6); child-side compaction is an unresolved
+   design question (RWC-004/RWC-015).
 
-## 9. TUI decision events (the interactive picker seam)
+## 9. `CreateAgentOptions` (0.2.1)
 
-- Plugins subscribe with plain `ctx.on('tui/rewind-prompt', listener)` —
-  the listener's return value is the decision: `{cancel: true, reason}` or
+`H/dsh-agent/lib/types/index.d.ts:48-104`; the factory consumes exactly
+`sessionId`, `seed`, `meta`, `inheritedEventCount`, `agentOptions`, `setup`,
+`signal`, `parentAgent` (`H/dsh-agent-loop/lib/index.js:1894-1897` for the
+session creation fields, `:1909` for `agentOptions`/`setup`/`signal`/`parentAgent`):
+
+- `sessionId` — caller-supplied live identity (`:50`);
+- `meta` — validated session metadata: `cwd?`, `parentSession?`, `isSeeded?`,
+  `origin? ('subagent')`, `delegationDepth?`, `agentPreset?` (`:60-71`);
+- `inheritedEventCount?` — exact fork-inherited prefix length, required when
+  `meta.isSeeded` is true (`:73`; session constructor
+  `H/dsh-session/lib/index.js:1416-1423`);
+- `seed?` — events contiguous from seq 0, lossless JSON, validated and frozen
+  before publication (`:80`);
+- `setup?` — runs after minting `agentCtx` but BEFORE publication, so observers
+  never see a half-configured world (`:92-103`).
+
+The old `inheritedCount` / top-level `parentSession` / top-level `cwd` aliases
+are **not** in the 0.2.1 options and are ignored by the factory.
+
+## 10. TUI decision events (the interactive picker seam)
+
+- Plugins subscribe with plain `ctx.on('tui/rewind-prompt', listener)`; the
+  return value is the decision: `{cancel: true, reason}` or
   `{modes: [{id, label, description}]}` (max 8), sanitized by
-  `normalizeRewindPromptDecision` (`T/lib/types/dsh-adapter/channel/decisions.js:31`).
-- `tui/rewind-done` fires after the TUI's fork with `{text, mode,
-  boundarySeq, sourceSessionId, childSessionId, cwd}`; the first non-empty
-  string return becomes the toast.
-- Subscriptions are D-7-gated: `tui/rewind-prompt` requires the
-  `session.rewind.intercept` grant (default deny); a denied subscription is a
-  warned no-op. Grants live in `~/.dsh-tui/extension-grants.json`:
+  `normalizeRewindPromptDecision`
+  (`T/lib/types/dsh-adapter/channel/decisions.js:37-75`).
+- The prompt fires **before** the fork with `{text, seq, sessionId, cwd}`;
+  `seq` is the picked **message** event seq, not the fork boundary
+  (`T/lib/types/dsh-adapter/channel/session-actions.js:9-17`;
+  `T/lib/types/dsh-adapter/extension-events.d.ts:106-112`).
+- `tui/rewind-done` fires after the TUI's own fork with `{text, mode,
+  boundarySeq, sourceSessionId, childSessionId, sessionId, cwd}`;
+  `boundarySeq` is the **inclusive source cut** the child seed ends at
+  (`turnStart.seq - 1`), and the first non-empty string return becomes the toast
+  (`session-rewind.js:136-147`;
+  `T/lib/types/dsh-adapter/extension-events.d.ts:130-144`;
+  `normalizeRewindDoneSummary` at `decisions.js:81-91`).
+- Subscriptions are D-7-gated on `session.rewind.intercept` (default deny), via
+  `T/lib/types/adapter/spec/protocol-constants.js:83`. Grants live in
+  `~/.dsh-tui/extension-grants.json` as
   `{"grants": {"<componentId>": [{"name": "session.rewind.intercept",
-  "scope": "decision event subscription"}]}}`
-  (`T/lib/types/adapter/standard/grants.js`).
+  "scope": "decision event subscription"}]}}`.
 
-## 10. pnpm `file:` install quirks
+## 11. pnpm `file:` install quirks
 
-- `pnpm add file:<path>` does NOT re-copy changed files ("Already up to
-  date"); a refresh is `remove` + `add` (see `scripts/reload-profile.sh`).
-- Offline installs: `dsh plugin --profile <p> add --offline file:<path>`
-  (registry writes fail EROFS on this machine).
+- Offline install: `dsh plugin --profile <p> add --offline "file:$PWD"`.
+  Registry writes fail EROFS on this machine.
+- `pnpm add file:<path>` does NOT re-copy changed files ("Already up to date");
+  refresh with `remove` + `add` (see `scripts/reload-profile.sh`).
+- The probe imports `lib/` from this checkout, so a profile refresh is **not**
+  needed for contract checks — only for booting the profile.
 
-## 11. The dev loop that works
+## 12. The dev loop that works
 
-1. `bash scripts/check-contracts.mjs --profile <p>` — catches contract bugs
-   before boot (validates tool/skill/seed/inject against the harness's own
-   rules).
-2. `bash scripts/reload-profile.sh <p>` — refresh the installed copy.
-3. Boot via `scripts/test-web-profile.sh` (logs to a file; background-job
-   stdout is buffered and hides runtime logs).
+1. `npm run check` / `node scripts/check-contracts.mjs --profile <p>` — version
+   gate + contract probe (imports worktree code, newest v4 fixture).
+2. `bash scripts/reload-profile.sh <p>` — refresh the installed copy before a
+   boot.
+3. Boot via `scripts/test-web-profile.sh` (logs to a file; background-job stdout
+   is buffered and hides runtime logs).
 4. When the UI misleads: `bash scripts/session-tail.sh <session-id>` — the
    transcript is ground truth (`command/run` vs `command/done` shows hangs,
    `request/header` shows the exposed tool list).

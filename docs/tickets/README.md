@@ -1,0 +1,152 @@
+# rewind-compact ticket backlog
+
+Backlog created **2026-10-27** from the spec/runtime review. Each ticket is a
+self-contained markdown file with context, tasks, acceptance criteria,
+dependencies, and verification. The review evidence is in
+`docs/research/` and the review conversation; the authoritative contracts are
+`SPEC.md` and `docs/HARNESS-CONTRACTS.md`.
+
+> **Baseline note:** the installed harness at review time was **0.2.1-rc.2**.
+> `docs/HARNESS-CONTRACTS.md` was verified against 0.1.5-rc.2 and the
+> `package.json` peer range ends at 0.2.0-rc.2. Several tickets below exist
+> because of that drift; RWC-001 resolves the baseline before the fixes are
+> considered stable.
+
+> **Status 2026-10-27:** `RWC-001`, `RWC-008`, and `RWC-015` are **done**.
+> Wave 1 (`002`, `003` after `002`, `005`, `010`, `012`, `013`, `014`) is ready;
+> `004` (retire) and `006` (drop TUI before) are now open; `011` waits on the
+> code fixes, `007` on `004`+`006`, and `016` on release.
+
+## Conventions
+
+- **ID:** `RWC-NNN` (stable; do not renumber).
+- **Status:** `open` (ready), `blocked` (waiting on a decision/dependency),
+  `in-progress`, `done`.
+- **Priority:** `P0` correctness or data integrity, `P1` user-visible quality,
+  `P2` docs/packaging.
+- **Estimate:** `S` (≤ half day), `M` (1–2 days), `L` (3+ days), relative to
+  one engineer familiar with the harness.
+- **Depends on** is a hard ordering constraint. **Blocks** records the inverse.
+- A ticket is done only when every acceptance box is checked, `npm run check`
+  is green on the declared harness line, and the verification commands were
+  run and recorded.
+- Update `Status` in both the ticket and the board table when it changes.
+
+### Review labels referenced in tickets
+
+- **P0-1** — in-place compaction cannot run on 0.2.1 (RWC-004, RWC-007)
+- **P0-2** — fork create options ignored / title missing (RWC-002)
+- **P0-3** — TUI picker seq mismatch (RWC-005)
+- **P1-4** — TUI before-mode composition (RWC-006)
+- **P1-5** — hand-rolled seed / shadowed messages (RWC-003)
+- **P1-6** — failure atomicity and swallowed errors (RWC-007)
+- **P1-7** — out-of-range turn points (RWC-008)
+- **P1-8** — retired `plugin` message source (RWC-009)
+- **P2-10** — “Files changed” accuracy (RWC-010)
+- **P2-11** — README/SKILL/SPEC overclaims (RWC-011)
+- **P2-12** — test/probe gaps (RWC-013)
+- **P2-13** — package metadata (RWC-014)
+- **baseline drift** — contracts/fixtures/version gate (RWC-001)
+- **R9 partial** — sdk-minimal PENDING (RWC-012)
+- **spec audit** — R1–R12 clause comparison (RWC-015, RWC-016)
+
+## Board
+
+| ID | Title | P | Status | Type | Est | Depends on | Spec |
+|---|---|---|---|---|---|---|---|
+| [RWC-001](RWC-001-harness-baseline.md) | Re-baseline contracts on 0.2.1-rc.2 | P0 | done | chore | M | — | §2, §6 |
+| [RWC-002](RWC-002-fork-create-metadata.md) | Correct fork creation metadata and title | P0 | open | bug | M | 001 | R4, R12 |
+| [RWC-003](RWC-003-surface-correct-seed.md) | Surface-correct fork seed + inherited state | P0 | open | bug | L | 001 (coord. 002) | R4, R5 |
+| [RWC-004](RWC-004-in-place-compaction.md) | Retire the in-place compaction path (D2) | P0 | open | bug | S | 001 (015 signed) | R2, R5 |
+| [RWC-005](RWC-005-tui-picker-mapping.md) | TUI picker: map picked message → turn | P0 | open | bug | S | 001 | R3, R6 |
+| [RWC-006](RWC-006-tui-before-mode.md) | Drop TUI before mode (D5) | P1 | open | bug | M | 005 (015 signed) | R4, R5 |
+| [RWC-007](RWC-007-failure-atomicity.md) | Failure atomicity and error surfacing | P0 | blocked | bug | M | 004, 006 | R5, §5 |
+| [RWC-008](RWC-008-turn-point-validation.md) | Fail closed on invalid turn points | P1 | done | bug | S | — | R6 |
+| [RWC-009](RWC-009-message-source-kind.md) | Replace retired plugin message source | P1 | open | bug | S | 003 | R5 |
+| [RWC-010](RWC-010-files-changed-accuracy.md) | Make "Files changed" accurate | P1 | open | bug | M | 001 | R5, R6, R10 |
+| [RWC-011](RWC-011-docs-spec-alignment.md) | Align README, SKILL, SPEC, AGENTS | P1 | blocked | docs | M | 002, 003, 004, 005, 006, 015 | R11, R12 |
+| [RWC-012](RWC-012-profile-coverage.md) | Load on every profile (sdk-minimal) | P1 | open | bug | M | 001 | R9 |
+| [RWC-013](RWC-013-test-probe-hardening.md) | Harden tests and contract probe | P1 | open | test | L | 001; final gate after the code fixes | §5, §6 |
+| [RWC-014](RWC-014-package-distribution.md) | Fix package/distribution metadata | P2 | open | chore | S | 001 (coord. 013) | R1 |
+| [RWC-015](RWC-015-spec-decisions.md) | Resolve spec ambiguities (ADR) | P0 | done | decision | M | — | R4–R7, R11, R12 |
+| [RWC-016](RWC-016-release-verification.md) | Fresh-profile release verification | P1 | blocked | test | M | 001, 012, 013, 014; all P0/P1 code tickets | §6, §7 |
+
+## Traceability: review finding → ticket
+
+| Review finding / theme | Ticket(s) |
+|---|---|
+| Harness baseline drift, stale probe/fixtures, version gate | RWC-001 |
+| Fork create options ignored; title missing | RWC-002, RWC-012 |
+| Seed resurrects shadowed messages; loses policy facts/turns/developer | RWC-003 |
+| In-place compaction invalid range/open step/system head | RWC-004, RWC-007 |
+| TUI prompt never offers modes; warning uses wrong seq | RWC-005 |
+| TUI before mode wrong order/duplicates prefix/drops users | RWC-006 |
+| Stray scaffold + swallowed TUI errors | RWC-007 |
+| Out-of-range points and invalid mode default | RWC-008 |
+| Retired `{kind:'plugin'}` source | RWC-009 |
+| “Files changed” includes reads/URLs/bash listings | RWC-010 |
+| README/SKILL/SPEC/AGENTS overclaims; stale task graph | RWC-011 |
+| `sdk-minimal` PENDING on required commands/skills | RWC-012 |
+| Missing tests for TUI/tool/command/rewind; probe holes | RWC-013 |
+| No `files`/`engines`; unused schemastery peer; private decision | RWC-014 |
+| Spec contradictions (R4/R7, R5 fallback, R6 rows, R11, R12) | RWC-015 |
+| Verification uses web not temp dsh-tui; in-place/TUI unverified | RWC-016 |
+
+## Spec coverage
+
+| Spec clause | Status in review | Tickets |
+|---|---|---|
+| R1 bundle | met | RWC-014 (packaging) |
+| R2 composition | partial | RWC-003, RWC-004, RWC-015 |
+| R3 surfaces | partial | RWC-005, RWC-006 |
+| R4 fork semantics | partial | RWC-002, RWC-003, RWC-006 |
+| R5 hybrid summary | **not met** | RWC-003, RWC-004, RWC-006, RWC-007, RWC-009, RWC-010, RWC-015 |
+| R6 picker | **not met** | RWC-005, RWC-008, RWC-010 |
+| R7 gating | met | RWC-015 (scope decision only) |
+| R8 coexistence | met | RWC-013 (patch regression check) |
+| R9 profiles | partial | RWC-012 |
+| R10 files warn | partial | RWC-010 |
+| R11 skill content | partial | RWC-011, RWC-015 |
+| R12 naming | partial (title) | RWC-002, RWC-011 |
+
+## Recommended sequence
+
+1. **RWC-015 (decisions) now.** RWC-001 is done. Most remaining tickets
+   depend on the ADR; do not start the in-place and TUI-before fixes before it
+   is signed off.
+2. **Fork path:** RWC-002 → RWC-003 → RWC-009.
+3. **TUI path:** RWC-005 → RWC-006 → RWC-007.
+4. **In-place path:** RWC-004 (after 015), then RWC-010.
+5. **Independent work:** RWC-008, RWC-012, and RWC-014 can run in parallel
+   after RWC-001; coordinate RWC-014’s pack test with RWC-013.
+6. **Continuously:** RWC-013 writes the failing regression tests first, then
+   keeps them green; RWC-011 lands as behavior stabilizes.
+7. **Release:** RWC-016 after all P0/P1 code tickets are done.
+
+## Dependency graph and agent waves
+
+- [`dependency-graph.md`](dependency-graph.md) — the coordination view: diagram,
+  wave/lane plan, critical path, shared-file rules, status protocol.
+- [`dependencies.mmd`](dependencies.mmd) — the Mermaid source of truth for the
+  diagram (keep it in sync with the page).
+
+The older `docs/task_dependencies.mmd` is historical: it marks “TUI picker
+integration” and “Live TUI fork verified” as done, which the 2026-10-27 review
+found not to be true (the picker never offers the plugin’s modes). Use the
+ticket graph.
+
+## Global definition of done
+
+- Every acceptance box in the ticket is checked.
+- Unit/integration tests cover the regression; the test fails before the fix.
+- `npm run check` is green on the declared harness line.
+- `README.md`, `SKILL.md`, `AGENTS.md`, and `docs/HARNESS-CONTRACTS.md` are
+  updated where the ticket changes behavior or invariants.
+- No direct writes to `~/.dsh` sessions, profiles, or locks; tests use
+  throwaway profiles.
+- Status updated here and in the ticket file.
+
+## Creating a new ticket
+
+Copy [`TEMPLATE.md`](TEMPLATE.md), use the next free `RWC-NNN`, fill every
+section, and add a row to the board.

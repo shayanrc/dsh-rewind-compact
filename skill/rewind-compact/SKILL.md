@@ -18,7 +18,8 @@ Rewind the conversation to a completed-turn boundary and compact one side of it 
 
 - Compaction (either side) runs without approval and is safe: the discarded side always remains recoverable in the pre-rewind session.
 - Rewind forks a new session and ALWAYS requires user approval: expect a decision prompt and wait for it. In headless runs the approval fails closed.
-- Point = a completed turn boundary. Mode `after` (default) compacts the tail; mode `before` compacts the prefix. Never pick a mid-turn point.
+- Point is a completed turn **number**, 1-based; `-1` means the newest completed turn (exact turn ids also resolve). Any other value — `0`, an out-of-range number, a decimal like `2.5`, empty input — fails with `REWIND_COMPACT_NO_TURN`: fix the number, never guess or retry with a different one.
+- Mode must be exactly `after` (default when omitted; compacts the tail) or `before` (compacts the prefix). Any other token is a usage error. Never pick a mid-turn point.
 - Read the result: `applied: false` (with a `note`) means this profile has no compaction service and nothing was summarized. Say so instead of reporting a summary.
 
 ## 3. Compact summary format (five-field scaffold)

@@ -34,7 +34,7 @@ All four surfaces register in `lib/index.js` (`apply` → one `ctx.effect`); edi
 
 ## Gotchas
 
-- `boundaryForPoint` (`lib/events.js`) falls back to the newest boundary for any out-of-range number: `0`, `99`, and `-1` all resolve to the last turn. Only a non-numeric miss errors as "Unknown turn".
+- `boundaryForPoint` (`lib/events.js`) fails closed: only an in-range 1-based turn number, the documented `-1` (newest) alias, or an exact turn-id match resolves. `0`, `99`, `-2`, `2.5`, `''`, and non-matches return `undefined` — there is no fallback to the last boundary. The command fast path likewise accepts only `after`/`before` (omitted mode = `after`) and returns a usage error for any other token.
 - `compactRegion(range.start, range.end + 1, …)` takes an exclusive end. In `after` mode that end is the scaffold message appended just before, so the scaffold lands inside the compacted range as its final message (the hybrid path). In `before` mode the appended scaffold sits at the transcript end, outside the compacted prefix — the summarizer never sees it (v1 gap, not yet exercised against a live compaction service).
 - Transcripts carry two shapes (agent-session, surface/child-seed); go through the `events.js` accessors rather than reading `data` fields directly.
 
