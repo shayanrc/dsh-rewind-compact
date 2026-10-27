@@ -1,6 +1,6 @@
 # RWC-020 — Tool human gate assumes event index equals seq
 
-- **Status:** open
+- **Status:** in-progress (implementation + tests green; awaiting independent code review + acceptance check)
 - **Priority:** P1
 - **Type:** bug (robustness)
 - **Estimate:** S
@@ -45,15 +45,15 @@ the real (smaller) issue.
 
 ## Tasks
 
-- [ ] Map seq → index explicitly: `const startIdx = events.findIndex((e) => e.seq === openTurnStartSeq)`; fail closed when not found; scan `startIdx + 1 … end`.
-- [ ] Add a regression test with a transcript whose pre-seq row count is 0 and
+- [x] Map seq → index explicitly: `const startIdx = events.findIndex((e) => e.seq === openTurnStartSeq)`; fail closed when not found; scan `startIdx + 1 … end`.
+- [x] Add a regression test with a transcript whose pre-seq row count is 0 and
       one with ≥2, covering: human in open turn forks; agent-initiated open
       turn fails closed even though the previous turn had a human message.
-- [ ] Keep the existing fail-closed tests green (non-human source, non-root,
+- [x] Keep the existing fail-closed tests green (non-human source, non-root,
       missing projection).
-- [ ] AGENTS gotcha: boundary helpers are seq-based; array scans must map
+- [x] AGENTS gotcha: boundary helpers are seq-based; array scans must map
       seq → index first.
-- [ ] After landing: rerun `npm run check` and the §6.3 live gate before
+- [x] After landing: rerun `npm run check` and the §6.3 live gate before
       reinstalling into live profiles.
 
 ## Acceptance criteria
@@ -85,3 +85,17 @@ Expected: gate correct under all pre-seq row counts; no fail-open.
   turn → `REWIND_COMPACT_APPROVAL_REQUIRED`.
 - Live session `da55c85a-…` has exactly one pre-seq row, so `index == seq + 1`
   — the gate works today by that coincidence.
+- **Arithmetic correction (implementation, 2026-10-27):** with k = 0 pre-seq
+  rows and 0-based contiguous seqs, `index == seq`, so the old scan starts
+  exactly at the open turn's first row — the fail-closed direction needs a log
+  whose seqs start past 0 (sliced/imported: `index < seq`), which the new
+  regression test uses (seqs start at 1; the gate must pass, and the fork then
+  rejects the torn log in `buildSeed` — proof the gate let the human input
+  through). The k ≥ 2 fail-open direction is as diagnosed: with k = 3 the old
+  scan starts two rows before the turn/start and reads the previous turn's
+  trailing human message; the regression test shows a full unauthorized fork
+  (`agents.create` reached) before the fix.
+- Regression tests fail before the fix exactly as required: 3 of 5 new tests
+  failed on the pre-fix code (fail-open ×2, fail-closed ×1); 2 are k-coverage
+  (human in open turn forks under both old and new code). `npm test` 86/86 and
+  `npm run check` green after the fix.

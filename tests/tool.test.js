@@ -218,3 +218,107 @@ test('rewind:true forks for a root agent with human input in the open turn', asy
   assert.equal(result.forked, true);
   assert.equal(created.length, 1);
 });
+
+// ── RWC-020: the gate must map seq → index, never use seq as an index ────────
+//
+// `openTurnStartSeq` is an event seq. The scan below uses it as an ARRAY INDEX,
+// which is only correct when the snapshot has no pre-seq rows and seqs start at
+// 0. These fixtures vary both: k pre-seq header rows (the live v4 transcript
+// carries one — index === seq + 1) and a log whose seqs start at 1 (a sliced or
+// imported log — index === seq − 1).
+
+function gateToolHarness(events, projection) {
+  const created = [];
+  const agent = { session: { id: 'source-session', snapshotEvents: () => events } };
+  const agents = {
+    create: async (options) => { created.push(options); return { id: options.sessionId }; },
+    roots: () => [agent],
+  };
+  const ctx = {
+    agents,
+    get(name) {
+      if (name === 'agents') return agents;
+      if (name === 'sessionProjections') return { stateOf: () => projection };
+      if (name === 'logger') return quietLogger();
+      return undefined;
+    },
+  };
+  return { tool: rewindCompactTool(ctx), agent, created };
+}
+
+// Pre-seq rows carry no seq — the physical header shape (RWC-020 evidence).
+const PRE_SEQ_ROW = { type: 'session', version: 4 };
+const LEGACY_ROW = { type: 'session/meta', legacy: true };
+
+/** Three turns completed with human messages; turn 4 open with `openKind`. */
+function manyPreSeqRowsLog(openKind) {
+  return [
+    PRE_SEQ_ROW, LEGACY_ROW, { ...LEGACY_ROW },
+    turnStart(0, 1), userMsg(1, 'first ask'), turnEnd(2, 1),
+    turnStart(3, 2), userMsg(4, 'second ask'), turnEnd(5, 2),
+    turnStart(6, 3), userMsg(7, 'third ask'), turnEnd(8, 3),
+    turnStart(9, 4), userMsg(10, openKind === 'user' ? 'human keeps typing' : 'goal-round nudge', openKind),
+  ];
+}
+
+/** No pre-seq rows, seqs contiguous from 0; turn 3 open with a human message. */
+function noPreSeqRowsLog() {
+  return [
+    turnStart(0, 1), userMsg(1, 'first ask'), turnEnd(2, 1),
+    turnStart(3, 2), userMsg(4, 'second ask'), turnEnd(5, 2),
+    turnStart(6, 3), userMsg(7, 'human keeps typing'),
+  ];
+}
+
+test('RWC-020: with k>=2 pre-seq rows an agent-initiated open turn fails closed though the previous turn had a human message', async () => {
+  const events = manyPreSeqRowsLog('runtime-context');
+  const { tool, agent, created } = gateToolHarness(events, { openTurnStartSeq: 9 });
+  await assert.rejects(
+    () => tool.execute({ point: '3', rewind: true }, { agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(created.length, 0, 'an agent-initiated turn must not fork (no fail-open)');
+});
+
+test('RWC-020: with k>=2 pre-seq rows a human message in the open turn still forks', async () => {
+  const events = manyPreSeqRowsLog('user');
+  const { tool, agent, created } = gateToolHarness(events, { openTurnStartSeq: 9 });
+  const result = await tool.execute({ point: '3', rewind: true }, { agent });
+  assert.equal(result.forked, true);
+  assert.equal(created.length, 1);
+});
+
+test('RWC-020: with no pre-seq rows (k=0) a human message in the open turn still forks', async () => {
+  const events = noPreSeqRowsLog();
+  const { tool, agent, created } = gateToolHarness(events, { openTurnStartSeq: 6 });
+  const result = await tool.execute({ point: '2', rewind: true }, { agent });
+  assert.equal(result.forked, true);
+  assert.equal(created.length, 1);
+});
+
+test('RWC-020: seqs not starting at 0 — the row right after turn/start is not skipped', async () => {
+  // A sliced/imported log whose first row is seq 1 (index === seq − 1): the
+  // human message immediately after the open turn/start must still count.
+  // The gate PASSES here; the fork then rejects the torn (non-contiguous-from-0)
+  // log in buildSeed, which is the proof the gate let the human input through.
+  const events = [
+    turnStart(1, 1), userMsg(2, 'first ask'), turnEnd(3, 1),
+    turnStart(4, 2), userMsg(5, 'human keeps typing'),
+  ];
+  const { tool, agent, created } = gateToolHarness(events, { openTurnStartSeq: 4 });
+  await assert.rejects(
+    () => tool.execute({ point: '1', rewind: true }, { agent }),
+    (err) => err.code !== 'REWIND_COMPACT_APPROVAL_REQUIRED' && /contiguous/.test(err.message),
+  );
+  assert.equal(created.length, 0);
+});
+
+test('RWC-020: an openTurnStartSeq matching no transcript row fails closed', async () => {
+  const events = noPreSeqRowsLog();
+  const { tool, agent, created } = gateToolHarness(events, { openTurnStartSeq: -5 });
+  await assert.rejects(
+    () => tool.execute({ point: '2', rewind: true }, { agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(created.length, 0);
+});
