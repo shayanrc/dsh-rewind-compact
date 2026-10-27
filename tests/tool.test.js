@@ -358,3 +358,32 @@ test('RWC-020: an openTurnStartSeq matching no transcript row fails closed', asy
   );
   assert.equal(created.length, 0);
 });
+
+// ── RWC-019: the tool's point resolution is the recovery path ────────────────
+//
+// The picker never advertises a turn that a compaction checkpoint shadowed,
+// but an explicit `point` still resolves it (recorded decision in the ticket).
+
+test('RWC-019: the tool still resolves explicit points for out-of-context turns', async () => {
+  const events = [
+    msg('session', 0, {}),
+    turnStart(1, 1), userMsg(2, 'first ask'), turnEnd(3, 1),
+    turnStart(4, 2), userMsg(5, 'second ask'), turnEnd(6, 2),
+    turnStart(7, 5),
+    {
+      type: 'user/message', seq: 8, time: 8,
+      surfaceOp: { op: 'replace', startSeq: 5, endSeq: 5 },
+      data: { message: { role: 'user', content: 'compaction summary of turn 2' }, source: { kind: 'compact-checkpoint', compactionId: 'c1' } },
+    },
+  ];
+  const session = { id: 'source-session', snapshotEvents: () => events };
+  const ctx = { get: (name) => (name === 'logger' ? quietLogger() : undefined) };
+  const tool = rewindCompactTool(ctx);
+
+  // Turn 2's only message is shadowed by the checkpoint — the retired
+  // (ungated) path still resolves point "2"; a picker-filtered resolution
+  // would throw REWIND_COMPACT_NO_TURN here.
+  const result = await tool.execute({ point: '2', rewind: false }, { agent: { session } });
+  assert.equal(result.reason, IN_PLACE_RETIRED_REASON);
+  assert.equal(result.ok, false);
+});
