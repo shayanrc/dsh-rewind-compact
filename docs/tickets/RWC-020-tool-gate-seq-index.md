@@ -99,3 +99,15 @@ Expected: gate correct under all pre-seq row counts; no fail-open.
   failed on the pre-fix code (fail-open ×2, fail-closed ×1); 2 are k-coverage
   (human in open turn forks under both old and new code). `npm test` 86/86 and
   `npm run check` green after the fix.
+- **Review reconciliation (independent code review, 2026-10-27):** the original
+  claim that a live v4 snapshot carries one pre-seq row (`index == seq + 1`)
+  conflicts with the harness core's contiguity contract (`seq = log.length`,
+  `eventAt(seq) = log[seq]`) and `lib/events.js`'s own note that
+  `snapshotEvents()` never contains the physical header — the observation
+  almost certainly read the JSONL *file*, which does begin with a header line.
+  Live snapshots are `index === seq` (k = 0), so the gate worked by design
+  there, not by coincidence. The fix is correct under every shape regardless
+  (k = 0, 1, ≥2 pre-seq rows; seqs starting past 0 — all pinned by tests,
+  including a k=1 gate test added after review). Review findings addressed:
+  AGENTS gotcha reworded; `isDirectHumanMessage` extracted into `events.js`
+  (the module that owns event shapes).

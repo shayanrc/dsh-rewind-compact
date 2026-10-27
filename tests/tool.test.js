@@ -296,6 +296,42 @@ test('RWC-020: with no pre-seq rows (k=0) a human message in the open turn still
   assert.equal(created.length, 1);
 });
 
+test('RWC-020: one pre-seq row (k=1, the JSONL header shape) — gate scoped to the open turn', async () => {
+  // The JSONL file's physical header shape: one seq-less row before seq 0
+  // (index === seq + 1). snapshotEvents() never contains that row, but a scan
+  // must not depend on any pre-seq row count. The gate must pass with a human
+  // message in the open turn and fail closed without one; the fork itself then
+  // rejects this snapshot downstream (REWIND_COMPACT_FIRST) — only the gate's
+  // verdict is under test here.
+  const withHuman = gateToolHarness(
+    [
+      PRE_SEQ_ROW,
+      turnStart(0, 1), userMsg(1, 'first ask'), turnEnd(2, 1),
+      turnStart(3, 2), userMsg(4, 'human keeps typing'),
+    ],
+    { openTurnStartSeq: 3 },
+  );
+  await assert.rejects(
+    () => withHuman.tool.execute({ point: '1', rewind: true }, { agent: withHuman.agent }),
+    (err) => err.code === 'REWIND_COMPACT_FIRST',
+  );
+  assert.equal(withHuman.created.length, 0);
+
+  const agentInitiated = gateToolHarness(
+    [
+      PRE_SEQ_ROW,
+      turnStart(0, 1), userMsg(1, 'first ask'), turnEnd(2, 1),
+      turnStart(3, 2), userMsg(4, 'goal-round nudge', 'runtime-context'),
+    ],
+    { openTurnStartSeq: 3 },
+  );
+  await assert.rejects(
+    () => agentInitiated.tool.execute({ point: '1', rewind: true }, { agent: agentInitiated.agent }),
+    (err) => err.code === 'REWIND_COMPACT_APPROVAL_REQUIRED',
+  );
+  assert.equal(agentInitiated.created.length, 0);
+});
+
 test('RWC-020: seqs not starting at 0 — the row right after turn/start is not skipped', async () => {
   // A sliced/imported log whose first row is seq 1 (index === seq − 1): the
   // human message immediately after the open turn/start must still count.
