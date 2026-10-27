@@ -74,7 +74,7 @@ dependencies, and verification. The review evidence is in
 | [RWC-017](RWC-017-integrated-re-review-gate.md) | Independent integrated re-review + verify gate | P0 | done | test | M | 002–007, 009, 010, 012–015 | §5, §6 |
 | [RWC-018](RWC-018-tui-decision-event-host.md) | TUI picker host DecisionEvents integration | P0 | done (descoped v1) | bug | L | 015 | R3.1, R6 |
 | [RWC-019](RWC-019-picker-in-context-turns.md) | Picker lists only in-context turns | P1 | open | bug | M | 008, 018 | R3.1, R6 |
-| [RWC-020](RWC-020-tool-gate-seq-index.md) | Tool human gate assumes index == seq | P1 | open | bug | S | — | R7 |
+| [RWC-020](RWC-020-tool-gate-seq-index.md) | Tool human gate assumes index == seq | P1 | done | bug | S | — | R7 |
 
 ## Traceability: review finding → ticket
 
@@ -118,7 +118,7 @@ dependencies, and verification. The review evidence is in
 
 ## Final sequence
 
-1. **Done:** RWC-001–RWC-018. **Open (post-release):** RWC-019, RWC-020.
+1. **Done:** RWC-001–RWC-018, RWC-020. **Open (post-release):** RWC-019.
 2. **TUI picker:** descoped for v1 by RWC-018; the TUI command and tool ship.
 3. **Gate:** RWC-017 reviewed and verified every changed ticket.
 4. **Release:** RWC-016 records the web E2E, packaging, profile, uninstall, and
