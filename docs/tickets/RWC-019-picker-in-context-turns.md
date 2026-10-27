@@ -1,6 +1,6 @@
 # RWC-019 — Picker lists only turns present in the current context
 
-- **Status:** in-progress (implementation + tests green; awaiting independent code review + acceptance check)
+- **Status:** done
 - **Priority:** P1
 - **Type:** bug / ux
 - **Estimate:** M
@@ -58,15 +58,15 @@ out-of-context turn.
 
 ## Acceptance criteria
 
-- [ ] A transcript with a compaction checkpoint shadowing turns N..M offers
+- [x] A transcript with a compaction checkpoint shadowing turns N..M offers
       only turns with ≥1 surface message outside the shadowed range.
-- [ ] A forked child's picker lists its inherited kept-side turns plus new
+- [x] A forked child's picker lists its inherited kept-side turns plus new
       turns; the source session's picker is unchanged.
-- [ ] The preview never shows system/plugin notice text.
-- [ ] The tool's `point` resolution behavior matches the decision recorded in
+- [x] The preview never shows system/plugin notice text.
+- [x] The tool's `point` resolution behavior matches the decision recorded in
       this ticket.
-- [ ] Regression tests fail before the fix.
-- [ ] `npm test` and `npm run check` green on the declared harness line.
+- [x] Regression tests fail before the fix.
+- [x] `npm test` and `npm run check` green on the declared harness line.
 
 ## Verification
 
@@ -156,3 +156,15 @@ summary/warning agreement invariant in AGENTS.md).
 Post-review suite: `npm test` 93/93; `npm run check` ALL CONTRACTS PASS. The
 reviewer also validated the new functions against 211 real transcripts under
 `~/.dsh/sessions` (largest: 2893 events / 50 turns) with zero divergence.
+
+## Completion
+
+- **Completed:** 2026-10-27
+- **Reviewed by:** independent subagent (`RWC-019 code review`), verdict **approve** — 2 minor findings + nits, all addressed in 236ca4c (picker no-op over the full turn list; exact spliced-node recording; unit tests for the new exports; endSeq-bound pin; ticket wording).
+- **Verified by:** independent subagent (`RWC-019 acceptance check`), verdict **pass** — all six criteria verified empirically, including /tmp reproductions of both the pre-fix failures (4 of 6 original command tests) and the pre-review failures (both review-fix guards fail on the pre-review code).
+- **Changed files:** `lib/events.js` (`shadowedSeqRanges`, `inContextEvents`, `inContextTurnBoundaries`), `lib/command.js` (picker in-context derivation, human/model preview, full-list no-op, fast path on all turns), `tests/command.test.js` (8 RWC-019 tests), `tests/events.test.js` (3 unit tests), `tests/tool.test.js` (1 recovery test), `README.md`, `skill/rewind-compact/SKILL.md`, `docs/tickets/` (ticket, board, dependency graph).
+- **Evidence:** `npm test` 93/93; `npm run check` ALL CONTRACTS PASS on 0.2.1-rc.2; real-transcript sweep (211 sessions) with zero divergence.
+- **Merged:** into `main` after both sign-offs, per the review-gate protocol (RWC-020 had merged first; the known cross-branch test-file conflicts were resolved by keeping both test blocks).
+- **Follow-ups (not acceptance failures):**
+  - The `Final sequence` / dependency-graph statuses are synced in this merge; `docs/tickets/README.md` remains the status source of truth.
+  - A between-turns human message (exotic transcript shape) could still be attributed to no turn by design — previews for such rows are intentionally never shown.

@@ -73,8 +73,8 @@ flowchart TB
   end
 
   subgraph w4["Wave 4 — post-release fixes"]
-    t019["RWC-019<br/>picker: in-context turns only<br/>P1 · open"]:::open
-    t020["RWC-020<br/>tool gate: seq→index mapping<br/>P1 · open"]:::open
+    t019["RWC-019<br/>picker: in-context turns only<br/>P1 · done"]:::done
+    t020["RWC-020<br/>tool gate: seq→index mapping<br/>P1 · done"]:::done
   end
 
   %% hard prerequisites
@@ -144,8 +144,10 @@ flowchart TB
 - **Done:** RWC-016 release verification. RWC-018 descoped the TUI Esc-Esc
   picker for v1 (backend bundle vs host DecisionEvents); the TUI command/tool
   ship. Web E2E, packaging, profile, and contract evidence are green.
-- **Open (post-release):** RWC-019 (picker lists only in-context turns) and
-  RWC-020 (tool gate seq→index mapping), both from live use on 2026-10-27.
+- **Open (post-release):** none — RWC-019 (picker lists only in-context
+  turns) and RWC-020 (tool gate seq→index mapping), both filed from live use
+  on 2026-10-27, are done: each merged into `main` only after an independent
+  code review (approve) and an independent acceptance check (pass).
 
 ## Agent queue (release)
 
