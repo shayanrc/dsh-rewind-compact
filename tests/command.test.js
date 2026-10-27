@@ -300,3 +300,50 @@ test('RWC-019: the fast path still resolves out-of-context turns (recovery path)
   assert.equal(result.kind, 'success');
   assert.equal(created.length, 1);
 });
+
+test('RWC-019: picker after-mode is a no-op only against the full turn list', async () => {
+  // Turn 2's only message is shadowed by a checkpoint in the still-open turn,
+  // so turn 1 is the newest IN-CONTEXT turn — but turn 2 still exists: after
+  // mode on turn 1 has a real (shadowed) tail and must not be refused as a
+  // no-op against the filtered list (review finding: both modes were refused,
+  // dead-ending the picker).
+  const events = [
+    msg('session', 0, { id: 'source-session' }),
+    turnStart(1, 1), userMsg(2, 'first ask'), turnEnd(3, 1),
+    turnStart(4, 2), userMsg(5, 'second ask'), turnEnd(6, 2),
+    turnStart(7, 3), checkpointMsg(8, 5, 5, 'summary of turn 2'),
+  ];
+  const answers = [
+    { id: 'rc-point', selected: ['turn 1 — first ask'] },
+    { id: 'rc-mode', selected: ['Compact after (Recommended)'] },
+  ];
+  const { command, created, session } = harness({ events, answers });
+  const result = await command.handler({ agent: { session }, rawInput: '' });
+  assert.equal(result.kind, 'success');
+  assert.equal(created.length, 1);
+});
+
+test('RWC-019: a turn whose only visible row is a tool result gets no preview (endSeq bound)', async () => {
+  // Turn 2's human message AND its turn/end marker are inside the shadowed
+  // range [6,9] — only its tool result survives. The preview scan is bounded
+  // by the turn's raw endSeq (7) and must not run past the shadowed marker
+  // into turn 4's 'fourth ask'.
+  const events = [
+    msg('session', 0, { id: 'source-session' }),
+    turnStart(1, 1), userMsg(2, 'first ask'), turnEnd(3, 1),
+    turnStart(4, 2),
+    msg('tool/result', 5, { callId: 'r1', message: { content: 'ok' } }),
+    userMsg(6, 'shadowed ask'), turnEnd(7, 2),
+    turnStart(8, 3), userMsg(9, 'third ask'), turnEnd(10, 3),
+    turnStart(11, 4), checkpointMsg(12, 6, 9, 'summary of turns 2-3'), userMsg(13, 'fourth ask'), turnEnd(14, 4),
+  ];
+  const { command, asked, session } = harness({ events });
+  await command.handler({ agent: { session }, rawInput: '' });
+
+  // Turn 3 is fully shadowed; turn 2 is offered (its tool result is a surface
+  // node) but shows no preview — never turn 4's text.
+  assert.deepEqual(optionLabels(asked), ['turn 4', 'turn 2', 'turn 1']);
+  const byTurn = optionByTurn(asked);
+  assert.equal(byTurn['turn 2'], 'turn 2');
+  assert.match(byTurn['turn 4'], /fourth ask/);
+});

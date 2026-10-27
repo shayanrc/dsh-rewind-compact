@@ -124,7 +124,35 @@ summary/warning agreement invariant in AGENTS.md).
   the fast path uses `listTurnBoundaries` (all turns); the picker's empty-list
   message now names the context restriction.
 - Regression tests: 4 of 6 new command tests failed on the pre-fix code
-  (shadowed turns offered, notice preview ×2, raw-log count, empty-context
+  (shadowed turns offered, notice preview, raw-log count, empty-context
   message); the fork-child parity test and the fast-path recovery test are
   deliberate guards that pass before and after. One tool test pins the
-  recovery-path decision. `npm test` 88/88 and `npm run check` green.
+  recovery-path decision. `npm run check` green.
+
+## Review findings addressed (independent code review, 2026-10-27 — approve)
+
+1. **Picker no-op dead end (minor):** `isNoOp` was evaluated over the filtered
+   in-context list, so after-mode at the newest in-context boundary was
+   refused even when a real (shadowed) tail existed — and with one in-context
+   turn both modes were refused. Fixed: the picker's no-op test now runs
+   against the FULL `listTurnBoundaries` list; a regression test (fails on
+   the pre-fix branch code) covers the shadowed-newer-turns shape.
+2. **Interval under-approximation (minor):** `shadowedSeqRanges` recorded only
+   the numeric `[startSeq, endSeq]` interval; a later span splicing an earlier
+   replacement node positioned inside but numerically outside the interval
+   left that node's row in `inContextEvents`. Fixed: spliced node seqs outside
+   the interval are recorded as exact singleton ranges; unit-tested with the
+   nested-marker case.
+3. **Ticket wording (nit):** the pre-fix failure list miscounted "notice
+   preview ×2" — there is one notice-preview test among the four. Corrected.
+4. **Coverage gaps (nit):** added direct unit tests for `shadowedSeqRanges`
+   (effective / ineffective / nested markers), `inContextEvents` (including
+   the log-only-row-inside-interval case and the no-marker identity fast
+   path), and `inContextTurnBoundaries` (visibility, endSeq, between-turn
+   rows, open turn); added a command test pinning the preview's `endSeq` bound
+   (a turn whose only visible row is a tool result gets no preview even
+   though a later turn's human text is in the view).
+
+Post-review suite: `npm test` 93/93; `npm run check` ALL CONTRACTS PASS. The
+reviewer also validated the new functions against 211 real transcripts under
+`~/.dsh/sessions` (largest: 2893 events / 50 turns) with zero divergence.

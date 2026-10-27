@@ -5,7 +5,7 @@ import {
   parseRewindMode, recordCallId, toolArguments, toolResultText,
   SURFACE_TYPES, POLICY_FACT_TYPES, KEPT_LOG_TYPES, seedSourceEvents, foldSurfaceRecords,
   sourceTitle, sourceAgentPreset, sourceCwd, sourceSessionId,
-  changedFiles, extractPaths,
+  changedFiles, extractPaths, shadowedSeqRanges, inContextEvents, inContextTurnBoundaries,
 } from '../lib/events.js';
 import { buildScaffold } from '../lib/scaffold.js';
 
@@ -253,5 +253,78 @@ test('source accessors fold title, preset, cwd and session id from their real ho
   assert.equal(sourceAgentPreset({ header: { agentPreset: 'standard' } }, events), 'reviewer');
   assert.equal(sourceAgentPreset({}, []), undefined);
   assert.equal(sourceAgentPreset({ header: { agentPreset: 'standard' } }, []), 'standard');
+});
+
+// ── RWC-019: the in-context view behind the picker ───────────────────────────
+
+const surfaceRow = (seq, id, op) => ({
+  type: 'user/message', seq, time: seq, surfaceOp: op ?? 'append',
+  data: { id, role: 'user', content: [], source: { kind: 'user' } },
+});
+const replaceRow = (seq, start, end) => surfaceRow(seq, `r-${seq}`, { op: 'replace', startSeq: start, endSeq: end });
+
+test('RWC-019: shadowedSeqRanges mirrors the fold splice rule exactly', () => {
+  // Effective marker: records its inclusive interval.
+  assert.deepEqual(
+    shadowedSeqRanges([surfaceRow(1, 'a'), surfaceRow(2, 'b'), replaceRow(3, 1, 2)]),
+    [[1, 2]],
+  );
+  // Ineffective marker (endSeq is not a live surface node): shadows NOTHING —
+  // the marker is a plain append, like foldSurfaceRecords treats it.
+  assert.deepEqual(
+    shadowedSeqRanges([surfaceRow(1, 'a'), surfaceRow(2, 'b'), replaceRow(3, 1, 9)]),
+    [],
+  );
+  // Nested spans: a later span splices NODES positionally and can remove an
+  // earlier replacement node whose seq lies numerically outside the later
+  // interval — the spliced seq is recorded exactly (review finding).
+  assert.deepEqual(
+    shadowedSeqRanges([
+      surfaceRow(1, 'a'), surfaceRow(2, 'b'), surfaceRow(3, 'c'), surfaceRow(4, 'd'), surfaceRow(5, 'e'),
+      replaceRow(10, 3, 4), // nodes: [1, 2, 10, 5]
+      replaceRow(11, 2, 5), // splices 2, 10, 5 — 10 lies outside [2, 5]
+    ]),
+    [[3, 4], [2, 5], [10, 10]],
+  );
+});
+
+test('RWC-019: inContextEvents drops shadowed rows and passes the rest through', () => {
+  const events = [
+    { type: 'session', version: 4 }, // no seq: passes through
+    surfaceRow(1, 'a'),
+    surfaceRow(2, 'b'),
+    { type: 'tool/call', seq: 3, time: 3, data: { callId: 'c1', name: 'write', arguments: { file_path: '/x' } } },
+    surfaceRow(4, 'c'),
+    // [2,4] names two live surface nodes; the log-only tool/call at seq 3
+    // sits inside the interval and is shadowed with them.
+    replaceRow(5, 2, 4),
+  ];
+  assert.deepEqual(inContextEvents(events).map((e) => e.seq ?? 'header'), ['header', 1, 5]);
+  // No live replacement marker: the input list itself (no copy).
+  const plain = [surfaceRow(1, 'a'), surfaceRow(2, 'b')];
+  assert.equal(inContextEvents(plain), plain);
+});
+
+test('RWC-019: inContextTurnBoundaries offers only turns with a visible message', () => {
+  const turnStartAt = (seq, turn) => ({ type: 'turn/start', seq, time: seq, data: { turn } });
+  const turnEndAt = (seq, turn) => ({ type: 'turn/end', seq, time: seq, data: { turn } });
+  const userAt = (seq, id, kind = 'user') => ({
+    type: 'user/message', seq, time: seq, surfaceOp: 'append',
+    data: { id, role: 'user', content: [], source: { kind } },
+  });
+  const events = [
+    turnStartAt(0, 1), userAt(1, 'u1'), turnEndAt(2, 1),
+    turnStartAt(3, 2), userAt(4, 'u2'), turnEndAt(5, 2),
+    turnStartAt(6, 3), userAt(7, 'u3'), turnEndAt(8, 3),
+    replaceRow(9, 4, 4), // checkpoint between turns: shadows turn 2's only message
+    turnStartAt(10, 4), userAt(11, 'ckpt', 'compact-checkpoint'), turnEndAt(12, 4),
+    turnStartAt(13, 5), userAt(14, 'u5'), // open turn 5: never offered
+  ];
+  const boundaries = inContextTurnBoundaries(events);
+  // Turn 2 is fully shadowed; the checkpoint row between turns 3 and 4 makes
+  // no turn visible; the open turn is not a boundary.
+  assert.deepEqual(boundaries.map((b) => b.turn), [1, 3, 4]);
+  assert.deepEqual(boundaries.map((b) => b.seq), [0, 6, 10]);
+  assert.deepEqual(boundaries.map((b) => b.endSeq), [2, 8, 12]);
 });
 
