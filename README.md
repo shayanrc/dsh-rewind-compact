@@ -4,7 +4,7 @@ Plugin bundle for the DeepSeek Harness (`dsh`): rewind the conversation to a cho
 
 ## Surfaces
 
-- TUI command `/rewind-compact [turn] [after|before]` — fast path; no arguments points at the picker.
+- TUI command `/rewind-compact [turn] [after|before]` — fast path; no arguments points at the picker. The picker lists **only completed turns still present in the current context** — a turn whose messages were compacted away (shadowed by a compaction checkpoint or replaced by a compact summary) is never advertised, its preview is never system-notice or summary text, and the per-turn files-changed count is computed over the same in-context view (RWC-019). Explicit turn numbers — the fast path and the tool's `point` — still resolve out-of-context turns (recovery path).
 
   **Descoped for v1 (RWC-018):** the Esc-Esc picker mode is not active on dsh-tui 0.17.0. A profile bundle is a backend activation; the TUI dispatcher reads only its host-mediated `DecisionEvents` registry, and a backend cannot register there. The TUI **command** and the model tool both work; the picker needs a native TUI plugin or a harness bridge (see `docs/tickets/RWC-018-tui-decision-event-host.md`).
 - Model-invoked tool `rewind_compact(point, mode, rewind)` — `rewind: true` forks a new session and requires direct human authority in the current turn (fails closed headless/sdk/goal-round). `rewind: false` is retired in v1: it returns a documented unsupported result and never touches the transcript.
