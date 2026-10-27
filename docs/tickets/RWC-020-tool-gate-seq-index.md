@@ -1,6 +1,6 @@
 # RWC-020 — Tool human gate assumes event index equals seq
 
-- **Status:** in-progress (implementation + tests green; awaiting independent code review + acceptance check)
+- **Status:** done
 - **Priority:** P1
 - **Type:** bug (robustness)
 - **Estimate:** S
@@ -58,11 +58,11 @@ the real (smaller) issue.
 
 ## Acceptance criteria
 
-- [ ] The gate passes only when a human-sourced message exists strictly inside
+- [x] The gate passes only when a human-sourced message exists strictly inside
       the open turn, regardless of the pre-seq row count (0, 1, ≥2 fixtures).
-- [ ] No fail-open path exists when the open turn has no human message.
-- [ ] Regression tests fail before the fix.
-- [ ] `npm test` and `npm run check` green on the declared harness line.
+- [x] No fail-open path exists when the open turn has no human message.
+- [x] Regression tests fail before the fix.
+- [x] `npm test` and `npm run check` green on the declared harness line.
 
 ## Verification
 
@@ -111,3 +111,15 @@ Expected: gate correct under all pre-seq row counts; no fail-open.
   including a k=1 gate test added after review). Review findings addressed:
   AGENTS gotcha reworded; `isDirectHumanMessage` extracted into `events.js`
   (the module that owns event shapes).
+
+## Completion
+
+- **Completed:** 2026-10-27
+- **Reviewed by:** independent subagent (`RWC-020 code review`), verdict **approve** — 2 minor findings + 1 nit, all addressed in 62ec61e (AGENTS/ticket reconciliation with the harness contiguity contract; k=1 fixture; `isDirectHumanMessage` accessor).
+- **Verified by:** independent subagent (`RWC-020 acceptance check`), verdict **pass** — every acceptance criterion verified empirically, including a /tmp reproduction of the pre-fix failures (87 tests / 84 pass / 3 fail, exactly the claimed set).
+- **Changed files:** `lib/tool.js` (seq→index mapping in `hasDirectHumanInput`), `lib/events.js` (`isDirectHumanMessage`), `tests/tool.test.js` (6 RWC-020 tests), `AGENTS.md` (gotcha), `docs/tickets/RWC-020-tool-gate-seq-index.md`, `docs/tickets/README.md`.
+- **Evidence:** `npm test` 87/87; `npm run check` ALL CONTRACTS PASS on 0.2.1-rc.2; pre-fix reproduction shows the fail-open (unauthorized `agents.create` reached on a k=3 fixture) and fail-closed (human denied on a seqs-start-at-1 log) defects.
+- **Merged:** into `main` after both sign-offs, per the review-gate protocol.
+- **Follow-ups (not acceptance failures):**
+  - The harness's own `dsh-tool-goal` `someOpenTurnEvent` still uses seq-as-index; this plugin's gate is now stricter than the pattern it mirrors — worth an upstream note.
+  - A well-formed-but-lying `turnBoundary` projection would be trusted (same as the harness's own `requireDirectHuman`); projection correctness is out of scope.
